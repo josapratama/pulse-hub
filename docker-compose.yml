@@ -1,0 +1,13 @@
+services:
+  pulse-hub:
+    build: .
+    container_name: pulse-hub
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - AUTHHUB_URL=https://auth.josapratama.com
+    volumes:
+      - ./data:/app/data
