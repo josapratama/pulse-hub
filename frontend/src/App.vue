@@ -654,8 +654,8 @@ onMounted(async () => {
     } catch {
       showToast("Kesalahan jaringan saat verifikasi SSO", "error");
     } finally {
-      // Clean query params so URL remains clean
-      window.history.replaceState({}, document.title, window.location.pathname);
+      // Clean query params and return path to root
+      window.history.replaceState({}, document.title, "/");
     }
   } else if (authToken.value) {
     try {
