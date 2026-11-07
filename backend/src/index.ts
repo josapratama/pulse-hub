@@ -237,6 +237,277 @@ app.get("/api/badges/:id/uptime.svg", (req: Request, res: Response) => {
 });
 
 // ─── RSS 2.0 Feed for Status & Incidents ─────────────────────
+function renderRssHtmlView(incidents: any[], settings: any, siteUrl: string): string {
+  const itemsHtml = incidents
+    .map((inc) => {
+      const latestUpdate = inc.updates[0]?.message || inc.title;
+      const pubDate = new Date(inc.createdAt).toLocaleString("id-ID", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const statusColor =
+        inc.status === "resolved"
+          ? "background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);"
+          : "background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.3);";
+
+      return `
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="status-pill" style="${statusColor}">${inc.status}</span>
+            <h2 class="card-title">${inc.title}</h2>
+          </div>
+          <div class="card-date">${pubDate}</div>
+        </div>
+        <div class="card-desc">${latestUpdate}</div>
+      </div>`;
+    })
+    .join("");
+
+  return `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>${settings.systemName} - Status &amp; Incidents Feed</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #030712;
+      color: #f3f4f6;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+      padding: 24px 16px;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header {
+      background: linear-gradient(135deg, rgba(30, 27, 75, 0.8), rgba(49, 46, 129, 0.6));
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      border-radius: 24px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 20px 40px -15px rgba(0,0,0,0.6);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(99, 102, 241, 0.2);
+      color: #a5b4fc;
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 12px;
+    }
+    .badge-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background-color: #38bdf8;
+      box-shadow: 0 0 8px #38bdf8;
+    }
+    h1 {
+      font-size: 20px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
+    }
+    p.desc {
+      font-size: 13px;
+      color: #9ca3af;
+      margin-bottom: 18px;
+    }
+    .btn-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #4f46e5;
+      color: #ffffff;
+      text-decoration: none;
+      padding: 9px 18px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+    }
+    .btn:hover {
+      background: #4338ca;
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: #1f2937;
+      color: #e5e7eb;
+      border: 1px solid #374151;
+    }
+    .btn-secondary:hover {
+      background: #374151;
+    }
+    .info-banner {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid #1e293b;
+      border-radius: 16px;
+      padding: 16px 20px;
+      font-size: 12px;
+      color: #94a3b8;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .info-icon {
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .items-header {
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #64748b;
+      margin-bottom: 16px;
+      padding-left: 4px;
+    }
+    .card {
+      background: rgba(17, 24, 39, 0.85);
+      border: 1px solid #1f2937;
+      border-radius: 20px;
+      padding: 20px;
+      margin-bottom: 16px;
+      transition: all 0.2s ease;
+    }
+    .card:hover {
+      border-color: #374151;
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px -10px rgba(0,0,0,0.5);
+    }
+    .card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .card-title-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      flex: 1;
+      min-width: 0;
+    }
+    .status-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #ffffff;
+      line-height: 1.4;
+    }
+    .card-date {
+      font-size: 11px;
+      color: #6b7280;
+      font-family: 'JetBrains Mono', monospace;
+      white-space: nowrap;
+    }
+    .card-desc {
+      font-size: 13px;
+      color: #cbd5e1;
+      line-height: 1.6;
+      white-space: pre-line;
+      border-left: 2px solid rgba(99, 102, 241, 0.5);
+      padding-left: 14px;
+      margin-top: 10px;
+    }
+    code {
+      background: rgba(99, 102, 241, 0.15);
+      color: #a5b4fc;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+    }
+    footer {
+      text-align: center;
+      font-size: 11px;
+      color: #475569;
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid #111827;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="badge">
+        <span class="badge-dot"></span>
+        PulseHub RSS 2.0 Feed
+      </div>
+      <h1>${settings.systemName}</h1>
+      <p class="desc">${settings.publicStatusPageTitle}</p>
+      <div class="btn-group">
+        <a href="${siteUrl}" class="btn">
+          <span>🛡️ Buka Status Page</span>
+        </a>
+        <button onclick="navigator.clipboard.writeText(window.location.origin + '/api/incidents/rss?format=xml'); alert('URL Feed XML berhasil disalin ke clipboard!');" class="btn btn-secondary">
+          <span>📋 Salin XML Feed</span>
+        </button>
+        <a href="/api/incidents/rss?format=xml" class="btn btn-secondary">
+          <span>XML Mentah</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="info-banner">
+      <span class="info-icon">📡</span>
+      <div>
+        <strong>Format Feed:</strong> Ini adalah tampilan web reader resmi PulseHub. Jika Anda menggunakan aplikasi pembaca RSS (Feedly, Inoreader, Thunderbird) atau bot Discord/Slack, gunakan URL feed XML: <code>${siteUrl}/api/incidents/rss?format=xml</code>.
+      </div>
+    </div>
+
+    <div class="items-header">Riwayat Insiden &amp; Pembaruan Terkini</div>
+    ${itemsHtml || '<div class="card" style="text-align: center; color: #64748b; font-size: 13px;">Tidak ada insiden tercatat. Semua sistem berjalan normal.</div>'}
+
+    <footer>
+      &#169; 2026 Josa Pratama Cloud Network &#8226; Powered by PulseHub Sentry
+    </footer>
+  </div>
+</body>
+</html>`;
+}
+
 app.get("/api/incidents/rss.xsl", (_req: Request, res: Response) => {
   const xsl = `<?xml version="1.0" encoding="utf-8"?>
 <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
@@ -268,7 +539,7 @@ app.get("/api/incidents/rss.xsl", (_req: Request, res: Response) => {
             background: linear-gradient(135deg, rgba(30, 27, 75, 0.7), rgba(49, 46, 129, 0.5));
             border: 1px solid rgba(99, 102, 241, 0.35);
             border-radius: 24px;
-            padding: 28px;
+            padding: 24px;
             margin-bottom: 24px;
             box-shadow: 0 20px 40px -15px rgba(0,0,0,0.6);
           }
@@ -295,7 +566,7 @@ app.get("/api/incidents/rss.xsl", (_req: Request, res: Response) => {
             box-shadow: 0 0 8px #38bdf8;
           }
           h1 {
-            font-size: 22px;
+            font-size: 20px;
             font-weight: 800;
             color: #ffffff;
             margin-bottom: 8px;
@@ -368,7 +639,7 @@ app.get("/api/incidents/rss.xsl", (_req: Request, res: Response) => {
             background: rgba(17, 24, 39, 0.85);
             border: 1px solid #1f2937;
             border-radius: 20px;
-            padding: 22px;
+            padding: 20px;
             margin-bottom: 16px;
             transition: all 0.2s ease;
           }
@@ -436,7 +707,7 @@ app.get("/api/incidents/rss.xsl", (_req: Request, res: Response) => {
               <a href="{/rss/channel/link}" class="btn">
                 <span>🛡️ Buka Status Page</span>
               </a>
-              <button onclick="navigator.clipboard.writeText(window.location.href); alert('URL RSS Feed berhasil disalin!');" class="btn btn-secondary">
+              <button onclick="navigator.clipboard.writeText(window.location.origin + '/api/incidents/rss?format=xml'); alert('URL RSS Feed berhasil disalin!');" class="btn btn-secondary">
                 <span>📋 Salin URL Feed</span>
               </button>
             </div>
@@ -466,7 +737,7 @@ app.get("/api/incidents/rss.xsl", (_req: Request, res: Response) => {
           </xsl:for-each>
 
           <footer>
-            &copy; 2026 Josa Pratama Cloud Network &bull; Powered by PulseHub Sentry
+            &#169; 2026 Josa Pratama Cloud Network &#8226; Powered by PulseHub Sentry
           </footer>
         </div>
       </body>
@@ -478,10 +749,21 @@ app.get("/api/incidents/rss.xsl", (_req: Request, res: Response) => {
   res.send(xsl);
 });
 
-app.get(["/rss.xml", "/api/incidents/rss"], (_req: Request, res: Response) => {
+app.get(["/rss.xml", "/api/incidents/rss"], (req: Request, res: Response) => {
   const incidents = db.getIncidents().slice(0, 20);
   const settings = db.getSettings();
   const siteUrl = "https://pulse-hub.josapratama.com";
+
+  // If a browser requests HTML directly (not explicitly asking for raw XML), render modern responsive HTML!
+  const isHtml =
+    req.headers.accept?.includes("text/html") &&
+    req.query.format !== "xml" &&
+    req.query.raw !== "1";
+
+  if (isHtml) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    return res.send(renderRssHtmlView(incidents, settings, siteUrl));
+  }
 
   let itemsXml = "";
   for (const inc of incidents) {
