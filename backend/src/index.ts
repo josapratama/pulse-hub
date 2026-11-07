@@ -237,6 +237,247 @@ app.get("/api/badges/:id/uptime.svg", (req: Request, res: Response) => {
 });
 
 // ─── RSS 2.0 Feed for Status & Incidents ─────────────────────
+app.get("/api/incidents/rss.xsl", (_req: Request, res: Response) => {
+  const xsl = `<?xml version="1.0" encoding="utf-8"?>
+<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
+  <xsl:output method="html" encoding="UTF-8" indent="yes"/>
+  <xsl:template match="/">
+    <html lang="id">
+      <head>
+        <title><xsl:value-of select="/rss/channel/title"/> - Web View</title>
+        <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <link rel="preconnect" href="https://fonts.googleapis.com"/>
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous"/>
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body {
+            background-color: #030712;
+            color: #f3f4f6;
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.6;
+            padding: 24px 16px;
+            min-height: 100vh;
+          }
+          .container {
+            max-width: 800px;
+            margin: 0 auto;
+          }
+          .header {
+            background: linear-gradient(135deg, rgba(30, 27, 75, 0.7), rgba(49, 46, 129, 0.5));
+            border: 1px solid rgba(99, 102, 241, 0.35);
+            border-radius: 24px;
+            padding: 28px;
+            margin-bottom: 24px;
+            box-shadow: 0 20px 40px -15px rgba(0,0,0,0.6);
+          }
+          .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+          }
+          .badge-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #38bdf8;
+            box-shadow: 0 0 8px #38bdf8;
+          }
+          h1 {
+            font-size: 22px;
+            font-weight: 800;
+            color: #ffffff;
+            margin-bottom: 8px;
+            letter-spacing: -0.02em;
+          }
+          p.desc {
+            font-size: 13px;
+            color: #9ca3af;
+            margin-bottom: 18px;
+          }
+          .btn-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+          }
+          .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #4f46e5;
+            color: #ffffff;
+            text-decoration: none;
+            padding: 9px 18px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s ease;
+          }
+          .btn:hover {
+            background: #4338ca;
+            transform: translateY(-1px);
+          }
+          .btn-secondary {
+            background: #1f2937;
+            color: #e5e7eb;
+            border: 1px solid #374151;
+          }
+          .btn-secondary:hover {
+            background: #374151;
+          }
+          .info-banner {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid #1e293b;
+            border-radius: 16px;
+            padding: 16px 20px;
+            font-size: 12px;
+            color: #94a3b8;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+          }
+          .info-icon {
+            font-size: 22px;
+            flex-shrink: 0;
+          }
+          .items-header {
+            font-size: 12px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #64748b;
+            margin-bottom: 16px;
+            padding-left: 4px;
+          }
+          .card {
+            background: rgba(17, 24, 39, 0.85);
+            border: 1px solid #1f2937;
+            border-radius: 20px;
+            padding: 22px;
+            margin-bottom: 16px;
+            transition: all 0.2s ease;
+          }
+          .card:hover {
+            border-color: #374151;
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px -10px rgba(0,0,0,0.5);
+          }
+          .card-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+          }
+          .card-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #ffffff;
+            line-height: 1.4;
+          }
+          .card-title a {
+            color: #ffffff;
+            text-decoration: none;
+          }
+          .card-title a:hover {
+            color: #818cf8;
+          }
+          .card-date {
+            font-size: 11px;
+            color: #6b7280;
+            font-family: 'JetBrains Mono', monospace;
+            white-space: nowrap;
+          }
+          .card-desc {
+            font-size: 13px;
+            color: #cbd5e1;
+            line-height: 1.6;
+            white-space: pre-line;
+            border-left: 2px solid rgba(99, 102, 241, 0.5);
+            padding-left: 14px;
+            margin-top: 10px;
+          }
+          footer {
+            text-align: center;
+            font-size: 11px;
+            color: #475569;
+            margin-top: 48px;
+            padding-top: 24px;
+            border-top: 1px solid #111827;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <div class="badge">
+              <span class="badge-dot"></span>
+              PulseHub RSS 2.0 Feed
+            </div>
+            <h1><xsl:value-of select="/rss/channel/title"/></h1>
+            <p class="desc"><xsl:value-of select="/rss/channel/description"/></p>
+            <div class="btn-group">
+              <a href="{/rss/channel/link}" class="btn">
+                <span>🛡️ Buka Status Page</span>
+              </a>
+              <button onclick="navigator.clipboard.writeText(window.location.href); alert('URL RSS Feed berhasil disalin!');" class="btn btn-secondary">
+                <span>📋 Salin URL Feed</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="info-banner">
+            <span class="info-icon">📡</span>
+            <div>
+              <strong>Informasi Feed XML:</strong> Halaman ini adalah versi web visual dari RSS Feed PulseHub. Anda dapat menyalin URL browser ini langsung ke aplikasi RSS Reader (Feedly, Inoreader, Thunderbird) atau webhook bot Discord/Slack untuk berlangganan notifikasi insiden otomatis.
+            </div>
+          </div>
+
+          <div class="items-header">Riwayat Insiden &amp; Pembaruan Terkini</div>
+
+          <xsl:for-each select="/rss/channel/item">
+            <div class="card">
+              <div class="card-header">
+                <h2 class="card-title">
+                  <a href="{link}"><xsl:value-of select="title"/></a>
+                </h2>
+                <div class="card-date"><xsl:value-of select="pubDate"/></div>
+              </div>
+              <div class="card-desc">
+                <xsl:value-of select="description"/>
+              </div>
+            </div>
+          </xsl:for-each>
+
+          <footer>
+            &copy; 2026 Josa Pratama Cloud Network &bull; Powered by PulseHub Sentry
+          </footer>
+        </div>
+      </body>
+    </html>
+  </xsl:template>
+</xsl:stylesheet>`;
+
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  res.send(xsl);
+});
+
 app.get(["/rss.xml", "/api/incidents/rss"], (_req: Request, res: Response) => {
   const incidents = db.getIncidents().slice(0, 20);
   const settings = db.getSettings();
@@ -257,6 +498,7 @@ app.get(["/rss.xml", "/api/incidents/rss"], (_req: Request, res: Response) => {
   }
 
   const rss = `<?xml version="1.0" encoding="UTF-8" ?>
+<?xml-stylesheet type="text/xsl" href="/api/incidents/rss.xsl"?>
 <rss version="2.0">
   <channel>
     <title><![CDATA[${settings.systemName} - Status & Incidents Feed]]></title>
