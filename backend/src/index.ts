@@ -83,6 +83,31 @@ app.get("/api/monitors/:id/history", (req: Request, res: Response) => {
   res.json({ history });
 });
 
+app.get("/api/monitors/:id/checks", (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const checks = db.getRecentChecks(id, 60);
+  res.json({ checks });
+});
+
+app.get("/api/monitors/:id/export.csv", (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const mon = db.getMonitorById(id);
+  if (!mon) return res.status(404).send("Monitor not found");
+
+  const history = db.get90DayHistory(id);
+  let csv = "date,status,uptime_percentage,checks_count,avg_latency_ms\n";
+  for (const h of history) {
+    csv += `${h.date},${h.status},${h.uptimePercentage},${h.checksCount},${h.avgLatencyMs}\n`;
+  }
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${mon.name.replace(/[^a-zA-Z0-9_-]/g, "_")}_uptime.csv"`
+  );
+  res.send(csv);
+});
+
 // Manual check trigger
 app.post("/api/monitors/:id/check", requireAdmin, async (req: Request, res: Response) => {
   const id = String(req.params.id);
@@ -93,13 +118,20 @@ app.post("/api/monitors/:id/check", requireAdmin, async (req: Request, res: Resp
   res.json({ success: true, result });
 });
 
+app.post("/api/monitors/:id/toggle-pause", requireAdmin, (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const updated = db.togglePauseMonitor(id);
+  if (!updated) return res.status(404).json({ error: "Monitor not found" });
+  res.json({ success: true, monitor: updated });
+});
+
 // ─── Monitors Management (Admin) ─────────────────────────────
 app.get("/api/monitors", (req: Request, res: Response) => {
   res.json({ monitors: db.getMonitors() });
 });
 
 app.post("/api/monitors", requireAdmin, (req: Request, res: Response) => {
-  const { name, url, group, intervalSec, timeoutSec, alertChannels, paused } = req.body;
+  const { name, url } = req.body;
   if (!name || !url) {
     return res.status(400).json({ error: "Name and URL are required" });
   }
@@ -110,10 +142,128 @@ app.post("/api/monitors", requireAdmin, (req: Request, res: Response) => {
   res.status(201).json({ success: true, monitor: saved });
 });
 
+app.put("/api/monitors/:id", requireAdmin, (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const mon = db.getMonitorById(id);
+  if (!mon) return res.status(404).json({ error: "Monitor not found" });
+
+  const updated = db.saveMonitor({ ...req.body, id });
+  res.json({ success: true, monitor: updated });
+});
+
 app.delete("/api/monitors/:id", requireAdmin, (req: Request, res: Response) => {
   const deleted = db.deleteMonitor(String(req.params.id));
   if (!deleted) return res.status(404).json({ error: "Monitor not found" });
   res.json({ success: true });
+});
+
+// ─── Dynamic SVG Shields Badges ──────────────────────────────
+function renderShieldBadge(leftText: string, rightText: string, rightColor: string): string {
+  const leftWidth = Math.max(40, leftText.length * 7 + 14);
+  const rightWidth = Math.max(40, rightText.length * 7 + 14);
+  const totalWidth = leftWidth + rightWidth;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${totalWidth}" height="20" role="img" aria-label="${leftText}: ${rightText}">
+  <title>${leftText}: ${rightText}</title>
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r">
+    <rect width="${totalWidth}" height="20" rx="4" fill="#fff"/>
+  </clipPath>
+  <g clip-path="url(#r)">
+    <rect width="${leftWidth}" height="20" fill="#24292e"/>
+    <rect x="${leftWidth}" width="${rightWidth}" height="20" fill="${rightColor}"/>
+    <rect width="${totalWidth}" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110">
+    <text aria-hidden="true" x="${(leftWidth * 10) / 2}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="${(leftWidth - 14) * 10}">${leftText}</text>
+    <text x="${(leftWidth * 10) / 2}" y="140" transform="scale(.1)" fill="#fff" textLength="${(leftWidth - 14) * 10}">${leftText}</text>
+    <text aria-hidden="true" x="${(leftWidth * 10) + (rightWidth * 10) / 2}" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="${(rightWidth - 14) * 10}">${rightText}</text>
+    <text x="${(leftWidth * 10) + (rightWidth * 10) / 2}" y="140" transform="scale(.1)" fill="#fff" textLength="${(rightWidth - 14) * 10}">${rightText}</text>
+  </g>
+</svg>`;
+}
+
+app.get("/api/badges/:id/status.svg", (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const mon = db.getMonitorById(id);
+  if (!mon) {
+    res.setHeader("Content-Type", "image/svg+xml");
+    return res.send(renderShieldBadge("PulseHub", "not found", "#6b7280"));
+  }
+
+  const status = mon.paused ? "paused" : mon.status;
+  const color =
+    status === "operational"
+      ? "#10b981"
+      : status === "degraded"
+      ? "#f59e0b"
+      : status === "paused"
+      ? "#6b7280"
+      : "#ef4444";
+
+  res.setHeader("Content-Type", "image/svg+xml");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.send(renderShieldBadge(mon.name, status, color));
+});
+
+app.get("/api/badges/:id/uptime.svg", (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const mon = db.getMonitorById(id);
+  if (!mon) {
+    res.setHeader("Content-Type", "image/svg+xml");
+    return res.send(renderShieldBadge("uptime 90d", "not found", "#6b7280"));
+  }
+
+  const uptime = `${mon.uptime90d || 100}%`;
+  const color =
+    mon.uptime90d >= 99
+      ? "#10b981"
+      : mon.uptime90d >= 95
+      ? "#f59e0b"
+      : "#ef4444";
+
+  res.setHeader("Content-Type", "image/svg+xml");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.send(renderShieldBadge(`${mon.name} uptime`, uptime, color));
+});
+
+// ─── RSS 2.0 Feed for Status & Incidents ─────────────────────
+app.get(["/rss.xml", "/api/incidents/rss"], (_req: Request, res: Response) => {
+  const incidents = db.getIncidents().slice(0, 20);
+  const settings = db.getSettings();
+  const siteUrl = "https://pulse-hub.josapratama.com";
+
+  let itemsXml = "";
+  for (const inc of incidents) {
+    const latestUpdate = inc.updates[0]?.message || inc.title;
+    const pubDate = new Date(inc.createdAt).toUTCString();
+    itemsXml += `
+    <item>
+      <title><![CDATA[${inc.title} [${inc.status.toUpperCase()}]]]></title>
+      <link>${siteUrl}#incident-${inc.id}</link>
+      <guid isPermaLink="false">${inc.id}</guid>
+      <pubDate>${pubDate}</pubDate>
+      <description><![CDATA[Status: ${inc.status} | Severity: ${inc.severity}\n\n${latestUpdate}]]></description>
+    </item>`;
+  }
+
+  const rss = `<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+  <channel>
+    <title>${settings.systemName} - Status &amp; Incidents Feed</title>
+    <link>${siteUrl}</link>
+    <description>${settings.publicStatusPageTitle}</description>
+    <language>id</language>
+    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+    ${itemsXml}
+  </channel>
+</rss>`;
+
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  res.send(rss);
 });
 
 // ─── Incident Command (Admin) ────────────────────────────────

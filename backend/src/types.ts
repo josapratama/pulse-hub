@@ -29,8 +29,14 @@ export interface Monitor {
   intervalSec: number;
   timeoutSec: number;
   expectedStatusCode: number;
+  expectedKeyword?: string;
+  degradedLatencyMs?: number;
+  retryCount?: number;
+  port?: number;
+  customHeaders?: Record<string, string>;
   status: MonitorStatus;
   lastCheckedAt?: string;
+  lastSslAlertAt?: string;
   latencyMs: number;
   uptime24h: number;
   uptime90d: number;

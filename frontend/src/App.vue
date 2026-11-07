@@ -45,6 +45,21 @@
 
       <!-- Header Controls & Auth Profile -->
       <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        <!-- RSS Feed Link -->
+        <a
+          href="/api/incidents/rss"
+          target="_blank"
+          class="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 text-amber-300 text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
+          title="Berlangganan RSS Feed Insiden"
+        >
+          <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 11a9 9 0 0 1 9 9" />
+            <path d="M4 4a16 16 0 0 1 16 16" />
+            <circle cx="5" cy="19" r="1" />
+          </svg>
+          <span class="hidden md:inline">RSS Feed</span>
+        </a>
+
         <!-- Manual Refresh Button -->
         <button
           @click="fetchStatus"
@@ -236,11 +251,13 @@
             >
               <!-- Monitor Header Row -->
               <div class="flex items-start justify-between gap-3">
-                <div class="flex items-start gap-2.5 min-w-0 flex-1">
+                <div class="flex items-start gap-2.5 min-w-0 flex-1 cursor-pointer" @click="openMonitorDetail(mon)">
                   <div
                     class="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5"
                     :class="
-                      mon.status === 'operational'
+                      mon.paused
+                        ? 'bg-slate-500'
+                        : mon.status === 'operational'
                         ? 'bg-emerald-400 shadow-md shadow-emerald-400/50'
                         : mon.status === 'degraded'
                         ? 'bg-amber-400 shadow-md shadow-amber-400/50'
@@ -249,42 +266,92 @@
                   ></div>
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2 flex-wrap">
-                      <h4 class="text-sm sm:text-base font-bold text-white truncate">{{ mon.name }}</h4>
-                      <span v-if="mon.paused" class="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">Paused</span>
+                      <h4 class="text-sm sm:text-base font-bold text-white truncate hover:text-indigo-300 transition-colors">
+                        {{ mon.name }}
+                      </h4>
+                      <span v-if="mon.paused" class="text-[9px] bg-slate-800 text-amber-300 border border-amber-500/30 px-1.5 py-0.5 rounded font-bold">
+                        PAUSED
+                      </span>
+                      <span v-if="mon.type === 'tcp'" class="text-[9px] bg-sky-950 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 rounded font-bold uppercase">
+                        TCP
+                      </span>
                     </div>
-                    <a :href="mon.url" target="_blank" class="text-[11px] text-slate-400 hover:text-indigo-400 transition-colors font-mono truncate block mt-0.5">
+                    <a :href="mon.url" target="_blank" @click.stop class="text-[11px] text-slate-400 hover:text-indigo-400 transition-colors font-mono truncate block mt-0.5">
                       {{ mon.url }}
                     </a>
                   </div>
                 </div>
 
-                <!-- Status Badge -->
-                <span
-                  class="px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider border shrink-0"
-                  :class="
-                    mon.status === 'operational'
-                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                      : mon.status === 'degraded'
-                      ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                      : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-                  "
-                >
-                  {{ mon.status }}
-                </span>
+                <!-- Status Badge & Quick Admin Actions -->
+                <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                  <button
+                    @click="openMonitorDetail(mon)"
+                    class="hidden sm:inline-flex items-center gap-1 text-[11px] text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-0.5 rounded-lg border border-indigo-500/30 transition-all font-semibold"
+                    title="Buka grafik performa & detail"
+                  >
+                    📈 Detail
+                  </button>
+                  <template v-if="isAdmin">
+                    <button
+                      @click="togglePauseMonitor(mon.id)"
+                      :class="mon.paused ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'"
+                      class="px-2 py-0.5 rounded-lg text-[10px] font-bold border hover:text-white transition-all"
+                      :title="mon.paused ? 'Lanjutkan pemantauan' : 'Jeda pemantauan (Pause)'"
+                    >
+                      {{ mon.paused ? '▶ Resume' : '⏸ Pause' }}
+                    </button>
+                    <button
+                      @click="openEditMonitor(mon)"
+                      class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all"
+                      title="Edit konfigurasi monitor"
+                    >
+                      ✏️ Edit
+                    </button>
+                  </template>
+                  <span
+                    class="px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider border shrink-0"
+                    :class="
+                      mon.paused
+                        ? 'bg-slate-800 text-slate-400 border-slate-700'
+                        : mon.status === 'operational'
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                        : mon.status === 'degraded'
+                        ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                        : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                    "
+                  >
+                    {{ mon.paused ? 'PAUSED' : mon.status }}
+                  </span>
+                </div>
               </div>
 
               <!-- Latency & SSL info line -->
-              <div class="flex items-center gap-3 sm:gap-5 text-[11px] text-slate-400">
-                <div class="flex items-center gap-1">
-                  <span>Latensi:</span>
-                  <strong class="font-mono text-slate-200">{{ mon.latencyMs }}ms</strong>
+              <div class="flex items-center justify-between text-[11px] text-slate-400 flex-wrap gap-2">
+                <div class="flex items-center gap-3 sm:gap-5 flex-wrap">
+                  <div class="flex items-center gap-1">
+                    <span>Latensi:</span>
+                    <strong class="font-mono text-slate-200">{{ mon.latencyMs }}ms</strong>
+                  </div>
+                  <div v-if="mon.sslDaysRemaining !== undefined" class="flex items-center gap-1">
+                    <span>SSL:</span>
+                    <strong :class="mon.sslDaysRemaining > 14 ? 'text-emerald-400' : 'text-amber-400'">
+                      {{ mon.sslDaysRemaining }} hari
+                    </strong>
+                  </div>
+                  <div v-if="mon.expectedKeyword" class="hidden sm:flex items-center gap-1 text-slate-400">
+                    <span>Keyword:</span>
+                    <code class="text-[10px] text-indigo-300 bg-indigo-950/60 px-1.5 py-0.5 rounded border border-indigo-900/60 font-mono">
+                      {{ mon.expectedKeyword }}
+                    </code>
+                  </div>
                 </div>
-                <div v-if="mon.sslDaysRemaining !== undefined" class="flex items-center gap-1">
-                  <span>SSL:</span>
-                  <strong :class="mon.sslDaysRemaining > 14 ? 'text-emerald-400' : 'text-amber-400'">
-                    {{ mon.sslDaysRemaining }} hari
-                  </strong>
-                </div>
+
+                <button
+                  @click="openMonitorDetail(mon)"
+                  class="sm:hidden text-indigo-400 font-bold hover:underline text-[11px]"
+                >
+                  Detail &amp; Grafik &rarr;
+                </button>
               </div>
 
               <!-- ─── 90-Day Interactive Uptime Heatmap Bars ─── -->
@@ -396,9 +463,24 @@
               <label class="block text-slate-400 mb-1">Grup / Kategori</label>
               <input v-model="newMonForm.group" type="text" placeholder="e.g. Ecosystem Applications" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white" />
             </div>
-            <div class="sm:col-span-2">
-              <label class="block text-slate-400 mb-1">Target URL</label>
-              <input v-model="newMonForm.url" type="text" placeholder="https://api.example.com/health" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white" />
+            <div>
+              <label class="block text-slate-400 mb-1">Target URL / Host</label>
+              <input v-model="newMonForm.url" type="text" placeholder="https://api.example.com/health atau 127.0.0.1:5432" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Tipe Pemantauan</label>
+              <select v-model="newMonForm.type" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white">
+                <option value="http">HTTP / HTTPS (Web / API)</option>
+                <option value="tcp">TCP Socket Port (Database / Redis / SSH)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Verifikasi Keyword Respon (Opsional)</label>
+              <input v-model="newMonForm.expectedKeyword" type="text" placeholder="e.g. status:ok atau healthy" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Ambang Latensi Degraded (ms)</label>
+              <input v-model.number="newMonForm.degradedLatencyMs" type="number" placeholder="2000" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white" />
             </div>
           </div>
           <button @click="submitAddMonitor" class="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors">
@@ -477,6 +559,259 @@
       </div>
     </div>
 
+    <!-- ─── Monitor Detail & Latency Trend Modal ─── -->
+    <div v-if="showDetailModal && selectedMonitor" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+      <div class="absolute inset-0 bg-black/80 backdrop-blur-md" @click="closeDetailModal"></div>
+      <div class="relative bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-7 max-w-3xl w-full shadow-2xl z-10 space-y-6 max-h-[90vh] overflow-y-auto">
+        <!-- Detail Header -->
+        <div class="flex items-start justify-between border-b border-slate-800 pb-4 gap-3">
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2 flex-wrap">
+              <h3 class="text-base sm:text-xl font-bold text-white truncate">{{ selectedMonitor.name }}</h3>
+              <span
+                class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border"
+                :class="
+                  selectedMonitor.paused
+                    ? 'bg-slate-800 text-slate-400 border-slate-700'
+                    : selectedMonitor.status === 'operational'
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : selectedMonitor.status === 'degraded'
+                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                    : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                "
+              >
+                {{ selectedMonitor.paused ? 'PAUSED' : selectedMonitor.status }}
+              </span>
+              <span v-if="selectedMonitor.type === 'tcp'" class="text-[9px] bg-sky-950 text-sky-300 border border-sky-500/30 px-2 py-0.5 rounded font-bold uppercase">
+                TCP Socket
+              </span>
+            </div>
+            <a :href="selectedMonitor.url" target="_blank" class="text-xs text-indigo-400 hover:underline font-mono truncate block mt-1">
+              {{ selectedMonitor.url }}
+            </a>
+          </div>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <a
+              :href="'/api/monitors/' + selectedMonitor.id + '/export.csv'"
+              class="px-2.5 py-1 text-xs rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold border border-slate-700 transition-colors flex items-center gap-1.5"
+              title="Download riwayat uptime format CSV"
+            >
+              <span>📥 CSV</span>
+            </a>
+            <button @click="closeDetailModal" class="text-slate-400 hover:text-white p-1.5 text-lg leading-none">✕</button>
+          </div>
+        </div>
+
+        <!-- Quick Admin Action Bar inside modal -->
+        <div v-if="isAdmin" class="flex items-center justify-between p-3 rounded-2xl bg-slate-950/60 border border-slate-800 text-xs gap-2 flex-wrap">
+          <span class="text-slate-400 font-bold uppercase text-[11px]">Kontrol Admin:</span>
+          <div class="flex items-center gap-2">
+            <button
+              @click="triggerManualCheck(selectedMonitor.id); openMonitorDetail(selectedMonitor)"
+              class="px-2.5 py-1 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 font-bold border border-indigo-500/40"
+            >
+              ⚡ Ping Sekarang
+            </button>
+            <button
+              @click="togglePauseMonitor(selectedMonitor.id)"
+              class="px-2.5 py-1 rounded-xl font-bold border"
+              :class="selectedMonitor.paused ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : 'bg-amber-500/20 text-amber-300 border-amber-500/40'"
+            >
+              {{ selectedMonitor.paused ? '▶ Aktifkan Pemantauan' : '⏸ Jeda (Pause)' }}
+            </button>
+            <button
+              @click="openEditMonitor(selectedMonitor); closeDetailModal()"
+              class="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold border border-slate-700"
+            >
+              ✏️ Edit Konfigurasi
+            </button>
+          </div>
+        </div>
+
+        <!-- 4 KPI Stats Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <div class="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800">
+            <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Uptime 24 Jam</div>
+            <div class="text-xl sm:text-2xl font-black text-emerald-400 font-mono mt-1">{{ selectedMonitor.uptime24h }}%</div>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800">
+            <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Uptime 90 Hari</div>
+            <div class="text-xl sm:text-2xl font-black text-emerald-400 font-mono mt-1">{{ selectedMonitor.uptime90d }}%</div>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800">
+            <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Latensi Terkini</div>
+            <div class="text-xl sm:text-2xl font-black text-indigo-300 font-mono mt-1">{{ selectedMonitor.latencyMs }}ms</div>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800">
+            <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Masa Berlaku SSL</div>
+            <div class="text-xl sm:text-2xl font-black font-mono mt-1" :class="(selectedMonitor.sslDaysRemaining || 0) > 14 ? 'text-emerald-400' : 'text-amber-400'">
+              {{ selectedMonitor.sslDaysRemaining !== undefined ? selectedMonitor.sslDaysRemaining + ' hari' : 'N/A' }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Latency Trend Area / Sparkline Graph -->
+        <div class="space-y-2.5 bg-slate-950/70 p-4 sm:p-5 rounded-2xl border border-slate-800">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <span>📊 Grafik Tren Latensi Respon (Pengecekan Terkini)</span>
+            </h4>
+            <div class="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+              <span>Min: <strong class="text-emerald-400">{{ minLatencyRecent }}ms</strong></span>
+              <span>&bull;</span>
+              <span>Avg: <strong class="text-indigo-300">{{ avgLatencyRecent }}ms</strong></span>
+              <span>&bull;</span>
+              <span>Max: <strong class="text-rose-400">{{ maxLatencyRecent }}ms</strong></span>
+            </div>
+          </div>
+
+          <div v-if="isLoadingChecks" class="h-28 flex items-center justify-center text-xs text-slate-500">
+            Memuat data histori pengecekan...
+          </div>
+          <div v-else-if="monitorChecks.length === 0" class="h-28 flex items-center justify-center text-xs text-slate-500">
+            Belum ada catatan latensi tersimpan.
+          </div>
+          <div v-else class="h-28 w-full relative pt-2">
+            <svg class="w-full h-full overflow-visible" viewBox="0 0 500 110" preserveAspectRatio="none">
+              <defs>
+                <linearGradient :id="'grad-' + selectedMonitor.id" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#6366f1" stop-opacity="0.35" />
+                  <stop offset="100%" stop-color="#6366f1" stop-opacity="0.0" />
+                </linearGradient>
+              </defs>
+              <!-- Filled area -->
+              <polygon :points="latencyChartArea" :fill="'url(#grad-' + selectedMonitor.id + ')'" />
+              <!-- Border line -->
+              <polyline :points="latencyChartPoints" fill="none" stroke="#818cf8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </div>
+        </div>
+
+        <!-- Shields Badge Integration for GitHub README -->
+        <div class="space-y-3 bg-slate-950/70 p-4 sm:p-5 rounded-2xl border border-slate-800 text-xs">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-300">
+              🏷️ Status Badge untuk GitHub README &amp; Docs
+            </h4>
+            <button
+              @click="copyBadgeMarkdown(selectedMonitor.id)"
+              class="px-2.5 py-1 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 font-bold transition-all"
+            >
+              {{ badgeCopied ? '✓ Tersalin!' : '📋 Salin Markdown' }}
+            </button>
+          </div>
+
+          <div class="flex items-center gap-3 flex-wrap pt-1">
+            <img :src="'/api/badges/' + selectedMonitor.id + '/status.svg'" alt="Status Badge Preview" class="h-5" />
+            <img :src="'/api/badges/' + selectedMonitor.id + '/uptime.svg'" alt="Uptime Badge Preview" class="h-5" />
+          </div>
+
+          <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-800 font-mono text-[11px] text-slate-400 break-all select-all">
+            [![PulseHub Status]({{ windowOrigin }}/api/badges/{{ selectedMonitor.id }}/status.svg)]({{ windowOrigin }})
+          </div>
+        </div>
+
+        <!-- Recent 15 Checks Logs Table -->
+        <div class="space-y-2.5">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">15 Pengecekan Terakhir</h4>
+          <div class="overflow-x-auto rounded-2xl border border-slate-800">
+            <table class="w-full text-left text-xs text-slate-300">
+              <thead class="bg-slate-950/80 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                <tr>
+                  <th class="p-2.5">Waktu</th>
+                  <th class="p-2.5">Status</th>
+                  <th class="p-2.5">HTTP Code</th>
+                  <th class="p-2.5">Latensi</th>
+                  <th class="p-2.5">Catatan / Error</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60 bg-slate-900/60">
+                <tr v-for="(c, idx) in monitorChecks.slice(-15).reverse()" :key="idx" class="hover:bg-slate-800/40">
+                  <td class="p-2.5 text-[11px] text-slate-400 whitespace-nowrap">{{ formatDate(new Date(c.timestamp).toISOString()) }}</td>
+                  <td class="p-2.5 whitespace-nowrap">
+                    <span
+                      class="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase border"
+                      :class="
+                        c.status === 'operational'
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                          : c.status === 'degraded'
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                          : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                      "
+                    >
+                      {{ c.status }}
+                    </span>
+                  </td>
+                  <td class="p-2.5 font-mono text-[11px]">{{ c.statusCode || '—' }}</td>
+                  <td class="p-2.5 font-mono text-[11px] text-slate-200">{{ c.latencyMs }}ms</td>
+                  <td class="p-2.5 text-[11px] text-slate-400 max-w-[220px] truncate">{{ c.error || 'Normal (OK)' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Edit Monitor Modal (Admin) ─── -->
+    <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+      <div class="absolute inset-0 bg-black/80 backdrop-blur-md" @click="showEditModal = false"></div>
+      <div class="relative bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-7 max-w-xl w-full shadow-2xl z-10 space-y-5 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h3 class="text-base font-bold text-white">Edit Konfigurasi Monitor</h3>
+          <button @click="showEditModal = false" class="text-slate-400 hover:text-white p-1">✕</button>
+        </div>
+
+        <div class="space-y-3 text-xs">
+          <div>
+            <label class="block text-slate-400 mb-1">Nama Layanan</label>
+            <input v-model="editMonForm.name" type="text" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Grup / Kategori</label>
+            <input v-model="editMonForm.group" type="text" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Target URL / Host</label>
+            <input v-model="editMonForm.url" type="text" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+          </div>
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-slate-400 mb-1">Tipe Pemantauan</label>
+              <select v-model="editMonForm.type" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white">
+                <option value="http">HTTP / HTTPS</option>
+                <option value="tcp">TCP Socket Port</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Expected HTTP Code</label>
+              <input v-model.number="editMonForm.expectedStatusCode" type="number" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-slate-400 mb-1">Keyword Respon (Opsional)</label>
+              <input v-model="editMonForm.expectedKeyword" type="text" placeholder="e.g. status:ok" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+            </div>
+            <div>
+              <label class="block text-slate-400 mb-1">Ambang Latensi Degraded (ms)</label>
+              <input v-model.number="editMonForm.degradedLatencyMs" type="number" placeholder="2000" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white" />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+          <button @click="showEditModal = false" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white">
+            Batal
+          </button>
+          <button @click="submitEditMonitor" class="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors">
+            Simpan Perubahan
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Footer -->
     <footer class="border-t border-slate-800/80 py-5 text-center text-xs text-slate-500 space-y-1 px-4">
       <p>Powered by <strong>PulseHub Sentry</strong> &bull; Terhubung ke <strong>AuthHub SSO</strong></p>
@@ -499,11 +834,26 @@ interface DayUptime {
   monitorName?: string;
 }
 
+interface CheckRecord {
+  timestamp: number;
+  status: "operational" | "degraded" | "down";
+  latencyMs: number;
+  statusCode?: number;
+  sslDaysRemaining?: number;
+  error?: string;
+}
+
 interface Monitor {
   id: string;
   name: string;
   group: string;
   url: string;
+  type?: "http" | "tcp" | "ssl";
+  intervalSec?: number;
+  timeoutSec?: number;
+  expectedStatusCode?: number;
+  expectedKeyword?: string;
+  degradedLatencyMs?: number;
   status: "operational" | "degraded" | "down";
   latencyMs: number;
   uptime24h: number;
@@ -546,6 +896,28 @@ const currentUser = ref<any>(null);
 const authToken = ref<string>(localStorage.getItem("pulsehub_auth_token") || "");
 const authConfig = ref<any>(null);
 const showAdminModal = ref(false);
+const windowOrigin = ref(typeof window !== "undefined" ? window.location.origin : "https://pulse-hub.josapratama.com");
+
+// Detail & Latency Trend Modal State
+const selectedMonitor = ref<Monitor | null>(null);
+const showDetailModal = ref(false);
+const monitorChecks = ref<CheckRecord[]>([]);
+const isLoadingChecks = ref(false);
+const badgeCopied = ref(false);
+
+// Edit Monitor Modal State
+const showEditModal = ref(false);
+const editMonForm = ref({
+  id: "",
+  name: "",
+  group: "",
+  url: "",
+  type: "http",
+  expectedStatusCode: 200,
+  expectedKeyword: "",
+  degradedLatencyMs: 2000,
+  timeoutSec: 10,
+});
 
 const isAdmin = computed(() => {
   if (!currentUser.value) return false;
@@ -554,7 +926,16 @@ const isAdmin = computed(() => {
 });
 
 // Admin forms
-const newMonForm = ref({ name: "", group: "Ecosystem Applications", url: "" });
+const newMonForm = ref({
+  name: "",
+  group: "Ecosystem Applications",
+  url: "",
+  type: "http",
+  expectedStatusCode: 200,
+  expectedKeyword: "",
+  degradedLatencyMs: 2000,
+  timeoutSec: 10,
+});
 const newIncForm = ref({ title: "", severity: "minor" });
 
 const groupedMonitors = computed(() => {
@@ -758,6 +1139,143 @@ async function cleanupDuplicates() {
     showToast("Kesalahan jaringan saat membersihkan insiden.", "error");
   }
 }
+
+// ─── Monitor Detail & Latency Chart Methods ───
+async function openMonitorDetail(mon: Monitor) {
+  selectedMonitor.value = mon;
+  showDetailModal.value = true;
+  isLoadingChecks.value = true;
+  badgeCopied.value = false;
+  monitorChecks.value = [];
+  try {
+    const res = await fetch(`${API_BASE}/monitors/${mon.id}/checks`);
+    if (res.ok) {
+      const data = await res.json();
+      monitorChecks.value = data.checks || [];
+    }
+  } catch (err) {
+    console.error("Failed to load monitor checks", err);
+  } finally {
+    isLoadingChecks.value = false;
+  }
+}
+
+function closeDetailModal() {
+  showDetailModal.value = false;
+  selectedMonitor.value = null;
+}
+
+function copyBadgeMarkdown(monId: string) {
+  const origin = windowOrigin.value;
+  const markdown = `[![PulseHub Status](${origin}/api/badges/${monId}/status.svg)](${origin})`;
+  navigator.clipboard.writeText(markdown).then(() => {
+    badgeCopied.value = true;
+    showToast("Markdown badge berhasil disalin ke clipboard!", "success");
+    setTimeout(() => {
+      badgeCopied.value = false;
+    }, 3000);
+  });
+}
+
+async function togglePauseMonitor(id: string) {
+  try {
+    const res = await fetch(`${API_BASE}/monitors/${id}/toggle-pause`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      showToast(
+        data.monitor.paused
+          ? "Pemantauan dijeda (paused)."
+          : "Pemantauan dilanjutkan (active).",
+        "info"
+      );
+      fetchStatus();
+      if (selectedMonitor.value && selectedMonitor.value.id === id) {
+        selectedMonitor.value.paused = data.monitor.paused;
+      }
+    } else {
+      showToast("Gagal mengubah status pemantauan.", "error");
+    }
+  } catch {
+    showToast("Kesalahan jaringan saat menjeda pemantauan.", "error");
+  }
+}
+
+function openEditMonitor(mon: Monitor) {
+  editMonForm.value = {
+    id: mon.id,
+    name: mon.name,
+    group: mon.group,
+    url: mon.url,
+    type: mon.type || "http",
+    expectedStatusCode: mon.expectedStatusCode || 200,
+    expectedKeyword: mon.expectedKeyword || "",
+    degradedLatencyMs: mon.degradedLatencyMs || 2000,
+    timeoutSec: mon.timeoutSec || 10,
+  };
+  showEditModal.value = true;
+}
+
+async function submitEditMonitor() {
+  if (!editMonForm.value.name || !editMonForm.value.url) return;
+  try {
+    const res = await fetch(`${API_BASE}/monitors/${editMonForm.value.id}`, {
+      method: "PUT",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(editMonForm.value),
+    });
+    if (res.ok) {
+      showToast("Konfigurasi monitor berhasil diperbarui!", "success");
+      showEditModal.value = false;
+      fetchStatus();
+    } else {
+      showToast("Gagal memperbarui monitor.", "error");
+    }
+  } catch {
+    showToast("Kesalahan jaringan saat memperbarui monitor.", "error");
+  }
+}
+
+const latencyChartPoints = computed(() => {
+  if (!monitorChecks.value.length) return "";
+  const checks = monitorChecks.value;
+  const maxLat = Math.max(...checks.map((c) => c.latencyMs || 0), 100);
+  const width = 500;
+  const height = 110;
+  const step = width / Math.max(checks.length - 1, 1);
+
+  return checks
+    .map((c, i) => {
+      const x = (i * step).toFixed(1);
+      const y = (height - ((c.latencyMs || 0) / maxLat) * (height - 24) - 12).toFixed(1);
+      return `${x},${y}`;
+    })
+    .join(" ");
+});
+
+const latencyChartArea = computed(() => {
+  if (!monitorChecks.value.length) return "";
+  const points = latencyChartPoints.value;
+  return `0,110 ${points} 500,110`;
+});
+
+const avgLatencyRecent = computed(() => {
+  if (!monitorChecks.value.length) return 0;
+  const sum = monitorChecks.value.reduce((acc, c) => acc + (c.latencyMs || 0), 0);
+  return Math.round(sum / monitorChecks.value.length);
+});
+
+const maxLatencyRecent = computed(() => {
+  if (!monitorChecks.value.length) return 0;
+  return Math.max(...monitorChecks.value.map((c) => c.latencyMs || 0));
+});
+
+const minLatencyRecent = computed(() => {
+  if (!monitorChecks.value.length) return 0;
+  return Math.min(...monitorChecks.value.map((c) => c.latencyMs || 0));
+});
 
 async function loginWithAuthHub() {
   if (authConfig.value?.ssoLoginUrl) {

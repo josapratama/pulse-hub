@@ -287,6 +287,20 @@ class PulseHubDb {
     return false;
   }
 
+  public togglePauseMonitor(id: string): Monitor | null {
+    const mon = this.data.monitors.find((m) => m.id === id);
+    if (!mon) return null;
+    mon.paused = !mon.paused;
+    mon.updatedAt = new Date().toISOString();
+    this.save();
+    return mon;
+  }
+
+  public getRecentChecks(monitorId: string, limit = 60): CheckRecord[] {
+    const checks = this.data.checks[monitorId] || [];
+    return checks.slice(-limit);
+  }
+
   public recordCheck(monitorId: string, check: CheckRecord) {
     if (!this.data.checks[monitorId]) {
       this.data.checks[monitorId] = [];
