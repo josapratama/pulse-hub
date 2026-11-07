@@ -116,10 +116,23 @@ export class HealthCheckerEngine {
     const previousStatus = monitor.status;
     const settings = db.getSettings();
 
-    if (previousStatus === "operational" && status === "down") {
-      alerter.sendAlert(monitor, "DOWN", errorMsg);
-
-      if (settings.autoIncidentOnDown) {
+    if (status === "operational") {
+      // Auto-resolve any active incidents for this monitor when it is back operational
+      if (db.hasActiveIncidentForMonitor(monitor.id)) {
+        db.resolveActiveIncidentsForMonitor(
+          monitor.id,
+          "Layanan telah pulih dan kembali operasional secara normal."
+        );
+      }
+      if (previousStatus === "down" && settings.alertOnRecovery) {
+        alerter.sendAlert(monitor, "RECOVERED");
+      }
+    } else if (status === "down") {
+      if (previousStatus === "operational") {
+        alerter.sendAlert(monitor, "DOWN", errorMsg);
+      }
+      // Only open a new incident if there is not already an active one for this monitor
+      if (settings.autoIncidentOnDown && !db.hasActiveIncidentForMonitor(monitor.id)) {
         db.saveIncident({
           title: `Layanan ${monitor.name} Mengalami Gangguan`,
           severity: "major",
@@ -127,8 +140,6 @@ export class HealthCheckerEngine {
           affectedMonitors: [monitor.id],
         });
       }
-    } else if (previousStatus === "down" && status === "operational" && settings.alertOnRecovery) {
-      alerter.sendAlert(monitor, "RECOVERED");
     }
 
     // Record check in database

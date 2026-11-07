@@ -129,6 +129,24 @@ app.post("/api/incidents", requireAdmin, (req: Request, res: Response) => {
   res.status(201).json({ success: true, incident: inc });
 });
 
+app.post("/api/incidents/resolve-all", requireAdmin, (req: Request, res: Response) => {
+  const { message } = req.body || {};
+  const count = db.resolveAllActiveIncidents(message || "Semua insiden telah diselesaikan oleh administrator.");
+  res.json({ success: true, resolvedCount: count });
+});
+
+app.post("/api/incidents/cleanup", requireAdmin, (_req: Request, res: Response) => {
+  const result = db.cleanupDuplicateIncidents();
+  res.json({ success: true, ...result });
+});
+
+app.delete("/api/incidents/:id", requireAdmin, (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const deleted = db.deleteIncident(id);
+  if (!deleted) return res.status(404).json({ error: "Incident not found" });
+  res.json({ success: true });
+});
+
 app.post("/api/incidents/:id/update", requireAdmin, (req: Request, res: Response) => {
   const id = String(req.params.id);
   const { status, message } = req.body;

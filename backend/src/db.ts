@@ -216,6 +216,8 @@ class PulseHubDb {
       this.data = getDefaultData();
       this.save();
     }
+    // Automatically sanitize and auto-resolve stale incidents on startup
+    this.cleanupDuplicateIncidents();
   }
 
   private save() {
@@ -376,6 +378,117 @@ class PulseHubDb {
     return this.data.incidents.filter((i) => i.status !== "resolved");
   }
 
+  public hasActiveIncidentForMonitor(monitorId: string): boolean {
+    return this.data.incidents.some(
+      (i) => i.status !== "resolved" && (i.affectedMonitors || []).includes(monitorId)
+    );
+  }
+
+  public resolveActiveIncidentsForMonitor(
+    monitorId: string,
+    message = "Layanan telah pulih dan kembali operasional secara normal."
+  ): number {
+    const now = new Date().toISOString();
+    let resolvedCount = 0;
+    for (const inc of this.data.incidents) {
+      if (inc.status !== "resolved" && (inc.affectedMonitors || []).includes(monitorId)) {
+        inc.status = "resolved";
+        inc.resolvedAt = now;
+        inc.updates.unshift({
+          id: "upd_" + crypto.randomBytes(4).toString("hex"),
+          status: "resolved",
+          message,
+          createdAt: now,
+        });
+        resolvedCount++;
+      }
+    }
+    if (resolvedCount > 0) {
+      this.save();
+    }
+    return resolvedCount;
+  }
+
+  public resolveAllActiveIncidents(message = "Insiden telah diselesaikan oleh administrator."): number {
+    const now = new Date().toISOString();
+    let resolvedCount = 0;
+    for (const inc of this.data.incidents) {
+      if (inc.status !== "resolved") {
+        inc.status = "resolved";
+        inc.resolvedAt = now;
+        inc.updates.unshift({
+          id: "upd_" + crypto.randomBytes(4).toString("hex"),
+          status: "resolved",
+          message,
+          createdAt: now,
+        });
+        resolvedCount++;
+      }
+    }
+    if (resolvedCount > 0) {
+      this.save();
+    }
+    return resolvedCount;
+  }
+
+  public deleteIncident(id: string): boolean {
+    const idx = this.data.incidents.findIndex((i) => i.id === id);
+    if (idx === -1) return false;
+    this.data.incidents.splice(idx, 1);
+    this.save();
+    return true;
+  }
+
+  public cleanupDuplicateIncidents(): { resolvedCount: number; deletedCount: number } {
+    const now = new Date().toISOString();
+    let resolvedCount = 0;
+    let deletedCount = 0;
+
+    // Detect monitors currently marked operational
+    const operationalMonitorIds = new Set(
+      this.data.monitors.filter((m) => m.status === "operational").map((m) => m.id)
+    );
+
+    const seenActiveMonitors = new Set<string>();
+    const filteredIncidents: Incident[] = [];
+
+    for (const inc of this.data.incidents) {
+      if (inc.status !== "resolved") {
+        const aff = inc.affectedMonitors || [];
+        // Auto-resolve if all affected monitors are operational
+        const allOperational = aff.length > 0 && aff.every((mId) => operationalMonitorIds.has(mId));
+        if (allOperational) {
+          inc.status = "resolved";
+          inc.resolvedAt = now;
+          inc.updates.unshift({
+            id: "upd_" + crypto.randomBytes(4).toString("hex"),
+            status: "resolved",
+            message: "Layanan telah kembali operasional normal (auto-resolve).",
+            createdAt: now,
+          });
+          resolvedCount++;
+          filteredIncidents.push(inc);
+          continue;
+        }
+
+        // Deduplicate duplicate active incident cards for the exact same monitors
+        const key = aff.slice().sort().join(",");
+        if (key && seenActiveMonitors.has(key)) {
+          deletedCount++;
+          continue;
+        }
+        if (key) seenActiveMonitors.add(key);
+      }
+      filteredIncidents.push(inc);
+    }
+
+    this.data.incidents = filteredIncidents;
+    if (resolvedCount > 0 || deletedCount > 0) {
+      this.save();
+    }
+    return { resolvedCount, deletedCount };
+  }
+
   public saveIncident(inc: Partial<Incident> & { title: string; severity: any; status: any }): Incident {
     const now = new Date().toISOString();
     if (inc.id) {
@@ -388,6 +501,25 @@ class PulseHubDb {
         };
         this.save();
         return this.data.incidents[idx];
+      }
+    }
+
+    // Deduplication check: if there is already an active incident for the same monitor, update it instead of creating duplicates
+    if (inc.affectedMonitors && inc.affectedMonitors.length > 0 && inc.status !== "resolved") {
+      const existing = this.data.incidents.find(
+        (i) => i.status !== "resolved" && i.affectedMonitors?.some((m) => inc.affectedMonitors!.includes(m))
+      );
+      if (existing) {
+        existing.status = inc.status || existing.status;
+        existing.severity = inc.severity || existing.severity;
+        existing.updates.unshift({
+          id: "upd_" + crypto.randomBytes(4).toString("hex"),
+          status: inc.status || existing.status,
+          message: inc.title || "Pembaruan status gangguan layanan.",
+          createdAt: now,
+        });
+        this.save();
+        return existing;
       }
     }
 

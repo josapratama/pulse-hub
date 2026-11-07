@@ -150,20 +150,61 @@
 
       <!-- ─── Active Incidents Notice (if any) ─── -->
       <div v-if="activeIncidents.length > 0" class="space-y-4">
-        <h3 class="text-xs sm:text-sm font-bold uppercase tracking-wider text-rose-400 flex items-center gap-2">
-          <span>🚨 Insiden Aktif Sedang Ditangani</span>
-        </h3>
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <h3 class="text-xs sm:text-sm font-bold uppercase tracking-wider text-rose-400 flex items-center gap-2">
+            <span>🚨 Insiden Aktif Sedang Ditangani</span>
+            <span class="px-2 py-0.5 rounded-full text-[11px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
+              {{ activeIncidents.length }}
+            </span>
+          </h3>
+
+          <!-- Admin Quick Bulk Incident Controls -->
+          <div v-if="isAdmin" class="flex items-center gap-2">
+            <button
+              @click="cleanupDuplicates"
+              class="px-2.5 py-1 text-xs rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold border border-slate-700 transition-all flex items-center gap-1.5 shadow-sm"
+              title="Auto-resolve insiden untuk layanan yang sudah normal & bersihkan kartu duplikat"
+            >
+              <span>🧹 Bersihkan Duplikat</span>
+            </button>
+            <button
+              @click="resolveAllIncidents"
+              class="px-2.5 py-1 text-xs rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 font-semibold border border-emerald-500/40 transition-all flex items-center gap-1.5 shadow-sm"
+              title="Tandai semua insiden aktif sebagai selesai"
+            >
+              <span>✓ Selesaikan Semua</span>
+            </button>
+          </div>
+        </div>
 
         <div
           v-for="inc in activeIncidents"
           :key="inc.id"
           class="bg-rose-950/20 border border-rose-500/30 rounded-3xl p-5 sm:p-6 backdrop-blur-xl space-y-4"
         >
-          <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
             <h4 class="text-sm sm:text-base font-bold text-white">{{ inc.title }}</h4>
-            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/30 shrink-0">
-              {{ inc.status }}
-            </span>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/30 shrink-0">
+                {{ inc.status }}
+              </span>
+              <template v-if="isAdmin">
+                <button
+                  @click="markIncidentResolved(inc.id)"
+                  class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 transition-all"
+                  title="Tandai insiden ini selesai"
+                >
+                  ✓ Selesai
+                </button>
+                <button
+                  @click="deleteIncident(inc.id)"
+                  class="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/40 transition-all"
+                  title="Hapus insiden ini"
+                >
+                  ✕ Hapus
+                </button>
+              </template>
+            </div>
           </div>
 
           <div class="space-y-3 pl-3 sm:pl-4 border-l-2 border-rose-500/30 text-xs">
@@ -379,6 +420,37 @@
                   Ping
                 </button>
                 <button @click="deleteMonitor(m.id)" class="text-rose-400 hover:text-rose-300 font-bold px-1.5 py-1 text-[10px]">
+                  Hapus
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Manage Active Incidents in Admin Drawer -->
+        <div v-if="activeIncidents.length > 0" class="space-y-3 bg-rose-950/20 p-4 rounded-2xl border border-rose-500/30">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold uppercase text-rose-400">Insiden Aktif ({{ activeIncidents.length }})</h4>
+            <div class="flex items-center gap-1.5">
+              <button @click="cleanupDuplicates" class="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 text-[10px] font-bold hover:bg-slate-700">
+                🧹 Duplikat
+              </button>
+              <button @click="resolveAllIncidents" class="px-2 py-0.5 rounded-lg bg-emerald-600/30 text-emerald-300 text-[10px] font-bold hover:bg-emerald-600/50">
+                ✓ Selesaikan Semua
+              </button>
+            </div>
+          </div>
+          <div class="space-y-2 max-h-36 overflow-y-auto">
+            <div v-for="inc in activeIncidents" :key="inc.id" class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs flex items-center justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <span class="font-bold text-white block truncate">{{ inc.title }}</span>
+                <span class="text-[10px] text-slate-400 uppercase">{{ inc.status }}</span>
+              </div>
+              <div class="flex items-center gap-1 shrink-0">
+                <button @click="markIncidentResolved(inc.id)" class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
+                  Selesai
+                </button>
+                <button @click="deleteIncident(inc.id)" class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold">
                   Hapus
                 </button>
               </div>
@@ -602,6 +674,88 @@ async function submitCreateIncident() {
     }
   } catch {
     showToast("Gagal mempublikasikan insiden", "error");
+  }
+}
+
+async function markIncidentResolved(id: string) {
+  try {
+    const res = await fetch(`${API_BASE}/incidents/${id}/update`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        status: "resolved",
+        message: "Insiden telah diselesaikan oleh administrator.",
+      }),
+    });
+    if (res.ok) {
+      showToast("Insiden berhasil ditandai selesai!", "success");
+      fetchStatus();
+    } else {
+      showToast("Gagal memperbarui insiden.", "error");
+    }
+  } catch {
+    showToast("Kesalahan jaringan saat menyelesaikan insiden.", "error");
+  }
+}
+
+async function deleteIncident(id: string) {
+  if (!confirm("Yakin ingin menghapus insiden ini?")) return;
+  try {
+    const res = await fetch(`${API_BASE}/incidents/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    if (res.ok) {
+      showToast("Insiden berhasil dihapus.", "info");
+      fetchStatus();
+    } else {
+      showToast("Gagal menghapus insiden.", "error");
+    }
+  } catch {
+    showToast("Kesalahan jaringan saat menghapus insiden.", "error");
+  }
+}
+
+async function resolveAllIncidents() {
+  if (!confirm("Selesaikan semua insiden aktif yang sedang berjalan?")) return;
+  try {
+    const res = await fetch(`${API_BASE}/incidents/resolve-all`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        message: "Seluruh insiden telah diselesaikan oleh administrator.",
+      }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(`Berhasil menyelesaikan ${data.resolvedCount || 0} insiden!`, "success");
+      fetchStatus();
+    } else {
+      showToast("Gagal menyelesaikan insiden.", "error");
+    }
+  } catch {
+    showToast("Kesalahan jaringan saat menyelesaikan semua insiden.", "error");
+  }
+}
+
+async function cleanupDuplicates() {
+  try {
+    const res = await fetch(`${API_BASE}/incidents/cleanup`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(
+        `Pembersihan selesai: ${data.resolvedCount || 0} diselesaikan, ${data.deletedCount || 0} duplikat dibuang.`,
+        "success"
+      );
+      fetchStatus();
+    } else {
+      showToast("Gagal membersihkan duplikat.", "error");
+    }
+  } catch {
+    showToast("Kesalahan jaringan saat membersihkan insiden.", "error");
   }
 }
 
