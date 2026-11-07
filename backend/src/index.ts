@@ -47,6 +47,7 @@ app.get("/api/status", (_req: Request, res: Response) => {
   const monitors = db.getMonitors();
   const activeIncidents = db.getActiveIncidents();
   const pastIncidents = db.getIncidents().filter((i) => i.status === "resolved").slice(0, 10);
+  const activeMaintenances = db.getActiveMaintenances();
   const settings = db.getSettings();
 
   // Compute overall ecosystem status
@@ -73,8 +74,13 @@ app.get("/api/status", (_req: Request, res: Response) => {
     monitors: monitorsWithHistory,
     activeIncidents,
     pastIncidents,
+    activeMaintenances,
     timestamp: new Date().toISOString(),
   });
+});
+
+app.get("/api/sla-report", (_req: Request, res: Response) => {
+  res.json(db.calculateSlaReport());
 });
 
 app.get("/api/monitors/:id/history", (req: Request, res: Response) => {
@@ -253,9 +259,9 @@ app.get(["/rss.xml", "/api/incidents/rss"], (_req: Request, res: Response) => {
   const rss = `<?xml version="1.0" encoding="UTF-8" ?>
 <rss version="2.0">
   <channel>
-    <title>${settings.systemName} - Status &amp; Incidents Feed</title>
+    <title><![CDATA[${settings.systemName} - Status & Incidents Feed]]></title>
     <link>${siteUrl}</link>
-    <description>${settings.publicStatusPageTitle}</description>
+    <description><![CDATA[${settings.publicStatusPageTitle}]]></description>
     <language>id</language>
     <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
     ${itemsXml}
@@ -264,6 +270,64 @@ app.get(["/rss.xml", "/api/incidents/rss"], (_req: Request, res: Response) => {
 
   res.setHeader("Content-Type", "application/xml; charset=utf-8");
   res.send(rss);
+});
+
+// ─── Subscribers API ─────────────────────────────────────────
+app.get("/api/subscribers", requireAdmin, (_req: Request, res: Response) => {
+  res.json({ subscribers: db.getSubscribers() });
+});
+
+app.post("/api/subscribers", (req: Request, res: Response) => {
+  const { type, target, name } = req.body;
+  if (!target || !target.trim()) {
+    return res.status(400).json({ error: "Target URL webhook atau email wajib diisi." });
+  }
+
+  const sub = db.addSubscriber({
+    type: type === "email" ? "email" : "webhook",
+    target: target.trim(),
+    name: name?.trim(),
+  });
+  res.status(201).json({ success: true, subscriber: sub });
+});
+
+app.delete("/api/subscribers/:id", requireAdmin, (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const deleted = db.deleteSubscriber(id);
+  if (!deleted) return res.status(404).json({ error: "Subscriber not found" });
+  res.json({ success: true });
+});
+
+// ─── Maintenance Windows API ─────────────────────────────────
+app.get("/api/maintenances", (_req: Request, res: Response) => {
+  res.json({
+    active: db.getActiveMaintenances(),
+    all: db.getMaintenances(),
+  });
+});
+
+app.post("/api/maintenances", requireAdmin, (req: Request, res: Response) => {
+  const { title, description, affectedMonitors, startAt, endAt, status } = req.body;
+  if (!title || !startAt || !endAt) {
+    return res.status(400).json({ error: "Title, startAt, dan endAt wajib diisi." });
+  }
+
+  const saved = db.saveMaintenance({
+    title,
+    description,
+    affectedMonitors: affectedMonitors || [],
+    startAt,
+    endAt,
+    status: status || "scheduled",
+  });
+  res.status(201).json({ success: true, maintenance: saved });
+});
+
+app.delete("/api/maintenances/:id", requireAdmin, (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const deleted = db.deleteMaintenance(id);
+  if (!deleted) return res.status(404).json({ error: "Maintenance window not found" });
+  res.json({ success: true });
 });
 
 // ─── Incident Command (Admin) ────────────────────────────────

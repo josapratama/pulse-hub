@@ -44,7 +44,38 @@
       </div>
 
       <!-- Header Controls & Auth Profile -->
-      <div class="flex items-center gap-1.5 sm:gap-3 shrink-0">
+      <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0 flex-wrap">
+        <!-- Subscribe CTA Button -->
+        <button
+          @click="showSubscribeModal = true"
+          class="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/40 text-indigo-300 text-xs font-semibold transition-all flex items-center gap-1.5 shrink-0"
+          title="Berlangganan Notifikasi Insiden (Discord Webhook / Email)"
+        >
+          <span class="text-sm">🔔</span>
+          <span class="hidden md:inline">Berlangganan</span>
+        </button>
+
+        <!-- SLA Report Modal Button -->
+        <button
+          @click="openSlaModal"
+          class="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700/80 text-emerald-300 text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
+          title="Lihat Laporan SLA & Ketersediaan Sistem"
+        >
+          <span class="text-sm">📋</span>
+          <span class="hidden md:inline">Laporan SLA</span>
+        </button>
+
+        <!-- TV / NOC Wallboard Fullscreen Mode Button -->
+        <button
+          @click="toggleNocMode"
+          class="p-2 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-semibold transition-colors flex items-center gap-1.5 shrink-0"
+          :class="isNocMode ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-slate-800/80 hover:bg-slate-700 border-slate-700/80 text-slate-300'"
+          title="Tampilan Layar TV / NOC Wallboard"
+        >
+          <span class="text-sm">🖥️</span>
+          <span class="hidden md:inline">{{ isNocMode ? 'Keluar TV' : 'TV Mode' }}</span>
+        </button>
+
         <!-- RSS Feed Link -->
         <a
           href="/api/incidents/rss"
@@ -57,7 +88,7 @@
             <path d="M4 4a16 16 0 0 1 16 16" />
             <circle cx="5" cy="19" r="1" />
           </svg>
-          <span class="hidden md:inline">RSS Feed</span>
+          <span class="hidden md:inline">RSS</span>
         </a>
 
         <!-- Manual Refresh Button -->
@@ -115,7 +146,34 @@
     </header>
 
     <!-- Main Workspace -->
-    <main class="flex-1 max-w-5xl w-full mx-auto px-3.5 py-5 sm:p-6 lg:p-8 space-y-6 sm:space-y-8">
+    <main
+      class="flex-1 w-full mx-auto px-3.5 py-5 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 transition-all"
+      :class="isNocMode ? 'max-w-7xl text-sm' : 'max-w-5xl'"
+    >
+      <!-- ─── Active Maintenance Notice Banner (if any) ─── -->
+      <div v-if="activeMaintenances.length > 0" class="space-y-3">
+        <div
+          v-for="maint in activeMaintenances"
+          :key="maint.id"
+          class="rounded-3xl p-4 sm:p-5 border border-sky-500/40 bg-sky-950/40 backdrop-blur-xl flex items-start gap-3.5 text-sky-200 shadow-xl shadow-sky-950/30"
+        >
+          <div class="w-10 h-10 rounded-2xl bg-sky-500/20 border border-sky-500/30 flex items-center justify-center text-xl shrink-0">
+            🛠️
+          </div>
+          <div class="min-w-0 flex-1 text-xs">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-bold text-sm text-white">{{ maint.title }}</span>
+              <span class="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-sky-500/20 text-sky-300 border border-sky-500/30">
+                Pemeliharaan Terjadwal
+              </span>
+            </div>
+            <p v-if="maint.description" class="text-sky-300/80 mt-1 leading-relaxed">{{ maint.description }}</p>
+            <div class="text-[10px] text-slate-400 mt-1 font-mono">
+              Jadwal: {{ formatDate(maint.startAt) }} &bull; Estimasi Selesai: {{ formatDate(maint.endAt) }}
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- ─── Hero Overall Status Banner ─── -->
       <div
@@ -232,6 +290,38 @@
               <p class="text-slate-200">{{ upd.message }}</p>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- ─── Search & Quick Status Filters ─── -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2">
+        <div class="relative flex-1 max-w-sm">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Cari nama layanan atau grup..."
+            class="w-full px-3.5 py-2 pl-9 rounded-2xl bg-slate-900/90 border border-slate-800 text-xs text-white placeholder-slate-500 focus:border-indigo-500/60 focus:outline-none transition-all"
+          />
+          <svg class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+        </div>
+
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 text-xs shrink-0">
+          <button
+            v-for="f in statusFilters"
+            :key="f.key"
+            @click="activeStatusFilter = f.key"
+            class="px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all whitespace-nowrap"
+            :class="
+              activeStatusFilter === f.key
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                : 'bg-slate-800/60 text-slate-400 hover:text-white border border-slate-800'
+            "
+          >
+            {{ f.label }} ({{ f.count }})
+          </button>
         </div>
       </div>
 
@@ -542,7 +632,7 @@
 
         <!-- Create Incident Form -->
         <div class="space-y-3 bg-slate-950/60 p-4 rounded-2xl border border-slate-800">
-          <h4 class="text-xs font-bold uppercase text-amber-400">Umumkan Insiden / Maintenance</h4>
+          <h4 class="text-xs font-bold uppercase text-amber-400">Umumkan Insiden / Gangguan</h4>
           <div class="space-y-2 text-xs">
             <input v-model="newIncForm.title" type="text" placeholder="Judul insiden, e.g. Pemeliharaan Jaringan Database" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white" />
             <select v-model="newIncForm.severity" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white">
@@ -555,6 +645,68 @@
           <button @click="submitCreateIncident" class="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold transition-colors">
             Publikasikan Insiden ke Status Page
           </button>
+        </div>
+
+        <!-- Schedule Maintenance Form & List -->
+        <div class="space-y-3 bg-sky-950/30 p-4 rounded-2xl border border-sky-500/30">
+          <h4 class="text-xs font-bold uppercase text-sky-400">Jadwalkan Pemeliharaan Sistem (Maintenance)</h4>
+          <div class="space-y-2 text-xs">
+            <input v-model="maintForm.title" type="text" placeholder="Judul pemeliharaan, e.g. Upgrade Server & Migrasi Database" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white" />
+            <textarea v-model="maintForm.description" rows="2" placeholder="Deskripsi pemeliharaan dan dampaknya..." class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white"></textarea>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <label class="block text-slate-400 mb-0.5 text-[10px]">Waktu Mulai (ISO / YYYY-MM-DDTHH:mm)</label>
+                <input v-model="maintForm.startAt" type="datetime-local" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs" />
+              </div>
+              <div>
+                <label class="block text-slate-400 mb-0.5 text-[10px]">Waktu Selesai</label>
+                <input v-model="maintForm.endAt" type="datetime-local" class="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs" />
+              </div>
+            </div>
+          </div>
+          <button @click="submitAddMaintenance" class="w-full py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition-colors">
+            + Jadwalkan Pemeliharaan
+          </button>
+
+          <!-- List of Scheduled Maintenances -->
+          <div v-if="allMaintenances.length > 0" class="pt-2 space-y-1.5 border-t border-sky-900/60 max-h-36 overflow-y-auto">
+            <div v-for="m in allMaintenances" :key="m.id" class="p-2.5 rounded-xl bg-slate-900/80 border border-sky-900/40 text-xs flex items-center justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <span class="font-bold text-white block truncate">{{ m.title }}</span>
+                <span class="text-[10px] text-slate-400 block">{{ formatDate(m.startAt) }} &rarr; {{ formatDate(m.endAt) }}</span>
+              </div>
+              <button @click="deleteMaintenance(m.id)" class="px-2 py-1 rounded bg-rose-500/20 text-rose-300 text-[10px] font-bold shrink-0">
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Manage Subscribers List -->
+        <div class="space-y-3 bg-slate-950/60 p-4 rounded-2xl border border-slate-800">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-bold uppercase text-indigo-400">Daftar Pelanggan Notifikasi Webhook/Email ({{ subscribers.length }})</h4>
+            <button @click="fetchSubscribers" class="text-[10px] text-indigo-300 hover:underline">Segarkan</button>
+          </div>
+          <div v-if="subscribers.length === 0" class="text-slate-500 text-xs py-2 text-center">
+            Belum ada subscriber terdaftar.
+          </div>
+          <div v-else class="space-y-1.5 max-h-36 overflow-y-auto">
+            <div v-for="s in subscribers" :key="s.id" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-xs flex items-center justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-1.5">
+                  <span class="px-1.5 py-0.5 rounded text-[9px] uppercase font-bold" :class="s.type === 'webhook' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-emerald-500/20 text-emerald-300'">
+                    {{ s.type }}
+                  </span>
+                  <span v-if="s.name" class="font-bold text-white text-[11px] truncate">{{ s.name }}</span>
+                </div>
+                <span class="text-[10px] text-slate-400 font-mono truncate block mt-0.5">{{ s.target }}</span>
+              </div>
+              <button @click="deleteSubscriber(s.id)" class="text-rose-400 hover:text-rose-300 text-[10px] font-bold px-1.5 py-0.5">
+                ✕
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -812,6 +964,175 @@
       </div>
     </div>
 
+    <!-- ─── Subscribe to Incident Notifications Modal ─── -->
+    <div v-if="showSubscribeModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+      <div class="absolute inset-0 bg-black/80 backdrop-blur-md" @click="showSubscribeModal = false"></div>
+      <div class="relative bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-7 max-w-lg w-full shadow-2xl z-10 space-y-5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 text-lg shrink-0">
+              🔔
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-white">Berlangganan Notifikasi Insiden</h3>
+              <p class="text-[11px] text-slate-400">Terima pemberitahuan saat terjadi insiden dan pemulihan.</p>
+            </div>
+          </div>
+          <button @click="showSubscribeModal = false" class="text-slate-400 hover:text-white p-1">✕</button>
+        </div>
+
+        <div class="space-y-3.5 text-xs">
+          <div>
+            <label class="block text-slate-400 mb-1">Metode Notifikasi</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                @click="subForm.type = 'webhook'"
+                class="py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center"
+                :class="subForm.type === 'webhook' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'"
+              >
+                Webhook (Discord / Slack)
+              </button>
+              <button
+                type="button"
+                @click="subForm.type = 'email'"
+                class="py-2 px-3 rounded-xl border text-xs font-bold transition-all text-center"
+                :class="subForm.type === 'email' ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'"
+              >
+                Email
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-slate-400 mb-1">
+              {{ subForm.type === 'webhook' ? 'URL Webhook (Discord / Slack / Custom API)' : 'Alamat Email' }}
+            </label>
+            <input
+              v-model="subForm.target"
+              type="text"
+              :placeholder="subForm.type === 'webhook' ? 'https://discord.com/api/webhooks/...' : 'nama@perusahaan.com'"
+              class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white placeholder-slate-500 font-mono text-[11px]"
+            />
+          </div>
+
+          <div>
+            <label class="block text-slate-400 mb-1">Nama / Label Pengenal (Opsional)</label>
+            <input
+              v-model="subForm.name"
+              type="text"
+              placeholder="e.g. Discord Channel #server-alerts"
+              class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white"
+            />
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+          <button @click="showSubscribeModal = false" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white">
+            Batal
+          </button>
+          <button @click="submitSubscribe" class="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors">
+            Daftarkan Notifikasi
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── SLA & Availability Report Modal ─── -->
+    <div v-if="showSlaModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+      <div class="absolute inset-0 bg-black/80 backdrop-blur-md" @click="showSlaModal = false"></div>
+      <div class="relative bg-slate-900 border border-slate-700 rounded-3xl p-5 sm:p-8 max-w-3xl w-full shadow-2xl z-10 space-y-6 max-h-[90vh] overflow-y-auto print:border-none print:shadow-none">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xl">📋</span>
+              <h3 class="text-lg font-bold text-white">Laporan SLA &amp; Ketersediaan Sistem</h3>
+            </div>
+            <p class="text-xs text-slate-400 mt-0.5">{{ systemName }} &bull; Periode Evaluasi Terkini</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              onclick="window.print()"
+              class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 flex items-center gap-1.5"
+            >
+              <span>🖨️ Cetak / PDF</span>
+            </button>
+            <button @click="showSlaModal = false" class="text-slate-400 hover:text-white p-1 text-lg">✕</button>
+          </div>
+        </div>
+
+        <div v-if="isLoadingSla" class="py-12 text-center text-xs text-slate-500">
+          Sedang menghitung metrik SLA sistem...
+        </div>
+
+        <div v-else-if="slaReport" class="space-y-5">
+          <!-- 4 Summary KPI Cards -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+            <div class="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+              <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">SLA 7 Hari</div>
+              <div class="text-xl sm:text-2xl font-black text-emerald-400 font-mono mt-1">{{ slaReport.slaSummary.uptime7d }}%</div>
+            </div>
+            <div class="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+              <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">SLA 30 Hari</div>
+              <div class="text-xl sm:text-2xl font-black text-emerald-400 font-mono mt-1">{{ slaReport.slaSummary.uptime30d }}%</div>
+            </div>
+            <div class="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+              <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">SLA 90 Hari</div>
+              <div class="text-xl sm:text-2xl font-black text-emerald-400 font-mono mt-1">{{ slaReport.slaSummary.uptime90d }}%</div>
+            </div>
+            <div class="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
+              <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Tingkat Ketersediaan</div>
+              <div class="text-xs font-black text-indigo-300 font-mono mt-2 uppercase">{{ slaReport.slaSummary.slaTier }}</div>
+            </div>
+          </div>
+
+          <!-- Breakdown per monitor table -->
+          <div class="space-y-2">
+            <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400">Rincian Performa Tiap Layanan</h4>
+            <div class="overflow-x-auto rounded-2xl border border-slate-800">
+              <table class="w-full text-left text-xs text-slate-300">
+                <thead class="bg-slate-950/80 text-[10px] uppercase font-bold text-slate-400 border-b border-slate-800">
+                  <tr>
+                    <th class="p-3">Nama Layanan</th>
+                    <th class="p-3">Grup</th>
+                    <th class="p-3">Status</th>
+                    <th class="p-3 font-mono">24 Jam</th>
+                    <th class="p-3 font-mono">7 Hari</th>
+                    <th class="p-3 font-mono">30 Hari</th>
+                    <th class="p-3 font-mono">90 Hari</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/60 bg-slate-900/60">
+                  <tr v-for="m in slaReport.monitors" :key="m.id" class="hover:bg-slate-800/40">
+                    <td class="p-3 font-bold text-white whitespace-nowrap">{{ m.name }}</td>
+                    <td class="p-3 text-[11px] text-slate-400 whitespace-nowrap">{{ m.group }}</td>
+                    <td class="p-3 whitespace-nowrap">
+                      <span
+                        class="px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase border"
+                        :class="
+                          m.status === 'operational'
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            : m.status === 'degraded'
+                            ? 'bg-amber-500/10 text-amber-400 border-amber-500/30'
+                            : 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                        "
+                      >
+                        {{ m.status }}
+                      </span>
+                    </td>
+                    <td class="p-3 font-mono text-[11px]">{{ m.uptime24h }}%</td>
+                    <td class="p-3 font-mono text-[11px]">{{ m.uptime7d }}%</td>
+                    <td class="p-3 font-mono text-[11px] font-semibold text-emerald-400">{{ m.uptime30d }}%</td>
+                    <td class="p-3 font-mono text-[11px]">{{ m.uptime90d }}%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Footer -->
     <footer class="border-t border-slate-800/80 py-5 text-center text-xs text-slate-500 space-y-1 px-4">
       <p>Powered by <strong>PulseHub Sentry</strong> &bull; Terhubung ke <strong>AuthHub SSO</strong></p>
@@ -891,6 +1212,25 @@ const pastIncidents = ref<Incident[]>([]);
 const isRefreshing = ref(false);
 const hoveredDay = ref<DayUptime | null>(null);
 
+// Search & Status Filters State
+const searchQuery = ref("");
+const activeStatusFilter = ref<string>("all");
+
+// Maintenance & Subscribers State
+const activeMaintenances = ref<any[]>([]);
+const allMaintenances = ref<any[]>([]);
+const subscribers = ref<any[]>([]);
+const showSubscribeModal = ref(false);
+const subForm = ref({ type: "webhook", target: "", name: "" });
+
+// SLA Report Modal State
+const showSlaModal = ref(false);
+const slaReport = ref<any>(null);
+const isLoadingSla = ref(false);
+
+// TV / NOC Mode State
+const isNocMode = ref(false);
+
 // AuthHub State
 const currentUser = ref<any>(null);
 const authToken = ref<string>(localStorage.getItem("pulsehub_auth_token") || "");
@@ -919,6 +1259,15 @@ const editMonForm = ref({
   timeoutSec: 10,
 });
 
+// Maintenance Schedule Form State
+const maintForm = ref({
+  title: "",
+  description: "",
+  startAt: "",
+  endAt: "",
+  status: "scheduled",
+});
+
 const isAdmin = computed(() => {
   if (!currentUser.value) return false;
   const r = currentUser.value.appRole;
@@ -938,9 +1287,46 @@ const newMonForm = ref({
 });
 const newIncForm = ref({ title: "", severity: "minor" });
 
+const statusFilters = computed(() => {
+  const all = monitors.value.length;
+  const operational = monitors.value.filter((m) => !m.paused && m.status === "operational").length;
+  const degraded = monitors.value.filter((m) => !m.paused && m.status === "degraded").length;
+  const down = monitors.value.filter((m) => !m.paused && m.status === "down").length;
+  const paused = monitors.value.filter((m) => m.paused).length;
+
+  return [
+    { key: "all", label: "Semua", count: all },
+    { key: "operational", label: "Normal", count: operational },
+    { key: "degraded", label: "Degraded", count: degraded },
+    { key: "down", label: "Down", count: down },
+    { key: "paused", label: "Paused", count: paused },
+  ];
+});
+
+const filteredMonitors = computed(() => {
+  return monitors.value.filter((m) => {
+    // Status filter
+    if (activeStatusFilter.value === "operational" && (m.paused || m.status !== "operational")) return false;
+    if (activeStatusFilter.value === "degraded" && (m.paused || m.status !== "degraded")) return false;
+    if (activeStatusFilter.value === "down" && (m.paused || m.status !== "down")) return false;
+    if (activeStatusFilter.value === "paused" && !m.paused) return false;
+
+    // Search query
+    if (searchQuery.value.trim() !== "") {
+      const q = searchQuery.value.toLowerCase();
+      const matchName = m.name.toLowerCase().includes(q);
+      const matchGroup = (m.group || "").toLowerCase().includes(q);
+      const matchUrl = (m.url || "").toLowerCase().includes(q);
+      if (!matchName && !matchGroup && !matchUrl) return false;
+    }
+
+    return true;
+  });
+});
+
 const groupedMonitors = computed(() => {
   const map: Record<string, Monitor[]> = {};
-  for (const m of monitors.value) {
+  for (const m of filteredMonitors.value) {
     const grp = m.group || "Other Services";
     if (!map[grp]) map[grp] = [];
     map[grp].push(m);
@@ -986,6 +1372,7 @@ async function fetchStatus() {
     monitors.value = data.monitors || [];
     activeIncidents.value = data.activeIncidents || [];
     pastIncidents.value = data.pastIncidents || [];
+    activeMaintenances.value = data.activeMaintenances || [];
   } catch (err) {
     console.error("Failed to load status payload", err);
   } finally {
@@ -1277,6 +1664,133 @@ const minLatencyRecent = computed(() => {
   return Math.min(...monitorChecks.value.map((c) => c.latencyMs || 0));
 });
 
+// ─── SLA, Subscribers & Maintenance Methods ───
+async function openSlaModal() {
+  showSlaModal.value = true;
+  isLoadingSla.value = true;
+  try {
+    const res = await fetch(`${API_BASE}/sla-report`);
+    if (res.ok) {
+      slaReport.value = await res.json();
+    }
+  } catch {
+    showToast("Gagal memuat laporan SLA", "error");
+  } finally {
+    isLoadingSla.value = false;
+  }
+}
+
+async function submitSubscribe() {
+  if (!subForm.value.target.trim()) {
+    showToast("URL Webhook atau email wajib diisi.", "error");
+    return;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/subscribers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(subForm.value),
+    });
+    if (res.ok) {
+      showToast("Berhasil berlangganan notifikasi insiden!", "success");
+      showSubscribeModal.value = false;
+      subForm.value = { type: "webhook", target: "", name: "" };
+      if (isAdmin.value) fetchSubscribers();
+    } else {
+      showToast("Gagal mendaftarkan notifikasi.", "error");
+    }
+  } catch {
+    showToast("Kesalahan jaringan saat berlangganan.", "error");
+  }
+}
+
+async function fetchSubscribers() {
+  try {
+    const res = await fetch(`${API_BASE}/subscribers`, { headers: getAuthHeaders() });
+    if (res.ok) {
+      const data = await res.json();
+      subscribers.value = data.subscribers || [];
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function deleteSubscriber(id: string) {
+  try {
+    const res = await fetch(`${API_BASE}/subscribers/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    if (res.ok) {
+      showToast("Subscriber dihapus.", "info");
+      fetchSubscribers();
+    }
+  } catch {
+    showToast("Gagal menghapus subscriber.", "error");
+  }
+}
+
+async function fetchMaintenances() {
+  try {
+    const res = await fetch(`${API_BASE}/maintenances`);
+    if (res.ok) {
+      const data = await res.json();
+      activeMaintenances.value = data.active || [];
+      allMaintenances.value = data.all || [];
+    }
+  } catch {
+    // ignore
+  }
+}
+
+async function submitAddMaintenance() {
+  if (!maintForm.value.title || !maintForm.value.startAt || !maintForm.value.endAt) {
+    showToast("Judul, waktu mulai, dan waktu selesai wajib diisi.", "error");
+    return;
+  }
+  try {
+    const res = await fetch(`${API_BASE}/maintenances`, {
+      method: "POST",
+      headers: getAuthHeaders(),
+      body: JSON.stringify(maintForm.value),
+    });
+    if (res.ok) {
+      showToast("Jadwal pemeliharaan berhasil disimpan!", "success");
+      maintForm.value = { title: "", description: "", startAt: "", endAt: "", status: "scheduled" };
+      fetchMaintenances();
+      fetchStatus();
+    } else {
+      showToast("Gagal menjadwalkan pemeliharaan.", "error");
+    }
+  } catch {
+    showToast("Kesalahan jaringan saat menyimpan jadwal.", "error");
+  }
+}
+
+async function deleteMaintenance(id: string) {
+  try {
+    const res = await fetch(`${API_BASE}/maintenances/${id}`, {
+      method: "DELETE",
+      headers: getAuthHeaders(),
+    });
+    if (res.ok) {
+      showToast("Jadwal pemeliharaan dihapus.", "info");
+      fetchMaintenances();
+      fetchStatus();
+    }
+  } catch {
+    showToast("Gagal menghapus pemeliharaan.", "error");
+  }
+}
+
+function toggleNocMode() {
+  isNocMode.value = !isNocMode.value;
+  if (isNocMode.value) {
+    showToast("TV / NOC Wallboard Mode Aktif.", "info");
+  }
+}
+
 async function loginWithAuthHub() {
   if (authConfig.value?.ssoLoginUrl) {
     const ssoUrl = new URL(authConfig.value.ssoLoginUrl);
@@ -1344,8 +1858,12 @@ onMounted(async () => {
     }
   }
 
-  // 3. Load initial public status
+  // 3. Load initial public status & maintenances
   fetchStatus();
+  fetchMaintenances();
+  if (authToken.value) {
+    fetchSubscribers();
+  }
   // Auto-refresh status every 60s
   setInterval(fetchStatus, 60_000);
 });

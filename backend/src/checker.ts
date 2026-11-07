@@ -223,21 +223,25 @@ export class HealthCheckerEngine {
     }
 
     const { status, latencyMs, statusCode, errorMsg, sslDays } = result;
+    const inMaintenance = db.isMonitorInMaintenance(monitor.id);
+    const effectiveStatus: MonitorStatus = inMaintenance ? "maintenance" : status;
 
     const record: CheckRecord = {
       timestamp: Date.now(),
-      status,
+      status: effectiveStatus,
       latencyMs,
       statusCode,
       sslDaysRemaining: sslDays,
-      error: errorMsg,
+      error: inMaintenance ? "Sedang dalam jendela pemeliharaan terjadwal" : errorMsg,
     };
 
     // Detect state changes and alert!
     const previousStatus = monitor.status;
     const settings = db.getSettings();
 
-    if (status === "operational" || status === "degraded") {
+    if (inMaintenance) {
+      // In maintenance window: do not trigger down alarms or new auto incidents
+    } else if (effectiveStatus === "operational" || effectiveStatus === "degraded") {
       // Auto-resolve any active incidents for this monitor when it is back operational/degraded
       if (db.hasActiveIncidentForMonitor(monitor.id)) {
         db.resolveActiveIncidentsForMonitor(
@@ -248,7 +252,7 @@ export class HealthCheckerEngine {
       if (previousStatus === "down" && settings.alertOnRecovery) {
         alerter.sendAlert(monitor, "RECOVERED");
       }
-    } else if (status === "down") {
+    } else if (effectiveStatus === "down") {
       if (previousStatus === "operational" || previousStatus === "degraded") {
         alerter.sendAlert(monitor, "DOWN", errorMsg);
       }

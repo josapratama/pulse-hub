@@ -9,6 +9,8 @@ import type {
   CheckRecord,
   DayUptime,
   MonitorStatus,
+  Subscriber,
+  MaintenanceWindow,
 } from "./types.js";
 import {
   NOTIFY_BRIDGE_URL,
@@ -216,6 +218,10 @@ class PulseHubDb {
       this.data = getDefaultData();
       this.save();
     }
+    // Ensure array structures exist
+    this.data.subscribers = this.data.subscribers || [];
+    this.data.maintenances = this.data.maintenances || [];
+
     // Automatically sanitize and auto-resolve stale incidents on startup
     this.cleanupDuplicateIncidents();
   }
@@ -585,6 +591,171 @@ class PulseHubDb {
     this.data.settings = { ...this.data.settings, ...settings };
     this.save();
     return this.data.settings;
+  }
+
+  // ─── Subscribers Management ───
+  public getSubscribers(): Subscriber[] {
+    return this.data.subscribers || [];
+  }
+
+  public addSubscriber(sub: { type: "webhook" | "email"; target: string; name?: string }): Subscriber {
+    const subscribers = this.data.subscribers || [];
+    const existing = subscribers.find((s) => s.target.toLowerCase() === sub.target.toLowerCase());
+    if (existing) {
+      existing.active = true;
+      if (sub.name) existing.name = sub.name;
+      this.save();
+      return existing;
+    }
+
+    const newSub: Subscriber = {
+      id: "sub_" + crypto.randomBytes(6).toString("hex"),
+      type: sub.type,
+      target: sub.target.trim(),
+      name: sub.name?.trim(),
+      active: true,
+      createdAt: new Date().toISOString(),
+    };
+    subscribers.push(newSub);
+    this.data.subscribers = subscribers;
+    this.save();
+    return newSub;
+  }
+
+  public deleteSubscriber(id: string): boolean {
+    const list = this.data.subscribers || [];
+    const before = list.length;
+    this.data.subscribers = list.filter((s) => s.id !== id);
+    if (this.data.subscribers.length !== before) {
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // ─── Maintenance Windows Management ───
+  public getMaintenances(): MaintenanceWindow[] {
+    return this.data.maintenances || [];
+  }
+
+  public getActiveMaintenances(): MaintenanceWindow[] {
+    const now = Date.now();
+    return (this.data.maintenances || []).filter((m) => {
+      const start = new Date(m.startAt).getTime();
+      const end = new Date(m.endAt).getTime();
+      return m.status !== "completed" && now >= start && now <= end;
+    });
+  }
+
+  public isMonitorInMaintenance(monitorId: string): boolean {
+    const activeMaint = this.getActiveMaintenances();
+    return activeMaint.some((m) => m.affectedMonitors.includes(monitorId) || m.affectedMonitors.length === 0);
+  }
+
+  public saveMaintenance(m: Partial<MaintenanceWindow> & { title: string; startAt: string; endAt: string }): MaintenanceWindow {
+    const list = this.data.maintenances || [];
+    const now = new Date().toISOString();
+
+    if (m.id) {
+      const idx = list.findIndex((x) => x.id === m.id);
+      if (idx !== -1) {
+        list[idx] = { ...list[idx], ...m };
+        this.save();
+        return list[idx];
+      }
+    }
+
+    const newMaint: MaintenanceWindow = {
+      id: "mnt_" + crypto.randomBytes(6).toString("hex"),
+      title: m.title,
+      description: m.description || "",
+      affectedMonitors: m.affectedMonitors || [],
+      startAt: m.startAt,
+      endAt: m.endAt,
+      status: m.status || "scheduled",
+      createdAt: now,
+    };
+    list.unshift(newMaint);
+    this.data.maintenances = list;
+    this.save();
+    return newMaint;
+  }
+
+  public deleteMaintenance(id: string): boolean {
+    const list = this.data.maintenances || [];
+    const before = list.length;
+    this.data.maintenances = list.filter((m) => m.id !== id);
+    if (this.data.maintenances.length !== before) {
+      this.save();
+      return true;
+    }
+    return false;
+  }
+
+  // ─── Comprehensive SLA Calculation ───
+  public calculateSlaReport() {
+    const monitors = this.data.monitors;
+    const now = Date.now();
+    const sevenDaysAgo = now - 7 * 24 * 3600 * 1000;
+    const thirtyDaysAgo = now - 30 * 24 * 3600 * 1000;
+    const ninetyDaysAgo = now - 90 * 24 * 3600 * 1000;
+
+    let total7dPercent = 0;
+    let total30dPercent = 0;
+    let total90dPercent = 0;
+
+    const monitorBreakdown = monitors.map((mon) => {
+      const checks = this.data.checks[mon.id] || [];
+
+      const calcUptimeForRange = (sinceMs: number, fallback: number) => {
+        const inRange = checks.filter((c) => c.timestamp >= sinceMs);
+        if (inRange.length === 0) return fallback;
+        const up = inRange.filter((c) => c.status === "operational").length;
+        return Number(((up / inRange.length) * 100).toFixed(2));
+      };
+
+      const uptime7d = calcUptimeForRange(sevenDaysAgo, mon.uptime24h || 100);
+      const uptime30d = calcUptimeForRange(thirtyDaysAgo, mon.uptime90d || 100);
+      const uptime90d = mon.uptime90d || 100;
+
+      total7dPercent += uptime7d;
+      total30dPercent += uptime30d;
+      total90dPercent += uptime90d;
+
+      return {
+        id: mon.id,
+        name: mon.name,
+        group: mon.group,
+        status: mon.status,
+        uptime24h: mon.uptime24h,
+        uptime7d,
+        uptime30d,
+        uptime90d,
+        latencyMs: mon.latencyMs,
+      };
+    });
+
+    const count = Math.max(monitors.length, 1);
+    const avg7d = Number((total7dPercent / count).toFixed(2));
+    const avg30d = Number((total30dPercent / count).toFixed(2));
+    const avg90d = Number((total90dPercent / count).toFixed(2));
+
+    // Approximate downtime in minutes for 30d (43,200 total mins in 30 days)
+    const outageMinutes30d = Math.round(((100 - avg30d) / 100) * 43200);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      systemName: this.data.settings.systemName,
+      slaSummary: {
+        uptime7d: avg7d,
+        uptime30d: avg30d,
+        uptime90d: avg90d,
+        totalServicesMonitored: monitors.length,
+        estimatedDowntime30dMinutes: outageMinutes30d,
+        slaTier: avg30d >= 99.9 ? "Three Nines (99.9%+)" : avg30d >= 99.0 ? "High Availability (99%+)" : "Standard",
+      },
+      monitors: monitorBreakdown,
+    };
   }
 }
 

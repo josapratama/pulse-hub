@@ -80,9 +80,31 @@ export interface PulseHubSettings {
   discordWebhookUrl: string;
 }
 
+export interface Subscriber {
+  id: string;
+  type: "webhook" | "email";
+  target: string;
+  name?: string;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface MaintenanceWindow {
+  id: string;
+  title: string;
+  description: string;
+  affectedMonitors: string[];
+  startAt: string; // ISO
+  endAt: string;   // ISO
+  status: "scheduled" | "in_progress" | "completed";
+  createdAt: string;
+}
+
 export interface PulseHubStore {
   monitors: Monitor[];
   checks: Record<string, CheckRecord[]>; // monitorId -> CheckRecord[]
   incidents: Incident[];
   settings: PulseHubSettings;
+  subscribers?: Subscriber[];
+  maintenances?: MaintenanceWindow[];
 }

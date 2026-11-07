@@ -86,6 +86,47 @@ export class AlertDispatcher {
         console.warn("Direct Discord alert failed:", err.message);
       }
     }
+
+    // 4. Dispatch to Custom Webhook Subscribers
+    const subscribers = db.getSubscribers().filter((s) => s.active && s.type === "webhook");
+    for (const sub of subscribers) {
+      try {
+        const payload = sub.target.includes("discord.com/api/webhooks")
+          ? {
+              username: "PulseHub Sentry",
+              embeds: [
+                {
+                  title,
+                  description: message,
+                  color: isDown ? 0xe11d48 : 0x10b981,
+                  timestamp: new Date().toISOString(),
+                },
+              ],
+            }
+          : {
+              event,
+              monitor: {
+                id: monitor.id,
+                name: monitor.name,
+                url: monitor.url,
+                group: monitor.group,
+                status: monitor.status,
+                latencyMs: monitor.latencyMs,
+              },
+              title,
+              message,
+              timestamp: new Date().toISOString(),
+            };
+
+        fetch(sub.target, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }).catch((err: any) => console.warn(`Subscriber webhook ${sub.id} failed:`, err.message));
+      } catch (err: any) {
+        console.warn("Subscriber dispatch error:", err.message);
+      }
+    }
   }
 }
 
