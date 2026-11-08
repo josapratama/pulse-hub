@@ -9,16 +9,18 @@
 
 1. **BetterStack / Instatus 90-Day Interactive Bars**:
    Visualisasi heatmap 90 batang ramping yang menampilkan persentase uptime dan rata-rata latensi harian saat disentuh/di-hover kursor.
-2. **Pemantauan Otomatis & Health Checker**:
+2. **NetPulse Sentry (Deep Packet Inspection / "Mini-Wireshark")**:
+   Penganalisis lalu lintas jaringan real-time dengan tampilan 3 panel gaya Wireshark (Packet Stream, OSI Layer Tree, dan Hex/ASCII Inspector), live throughput monitor, serta tombol ekspor rekaman ke berkas `.pcap` standar.
+3. **Pemantauan Otomatis & Health Checker**:
    Secara berkala memverifikasi ketersediaan endpoint HTTP/HTTPS, kode status, waktu respons (*latency ms*), dan hari kedaluwarsa sertifikat SSL.
-3. **Peringatan Multi-Saluran Cerdas**:
+4. **Peringatan Multi-Saluran Cerdas**:
    Saat layanan terdeteksi *DOWN*, PulseHub otomatis mengirim peringatan darurat melalui:
    * **WhatsApp** (via NotifyBridge Gateway)
    * **Telegram Bot**
    * **Discord Webhook** (Rich Embed Alert)
-4. **Incident & Post-Mortem Management**:
+5. **Incident & Post-Mortem Management**:
    Memungkinkan administrator menerbitkan pengumuman investigasi masalah, pemeliharaan berkala (*scheduled maintenance*), serta rekap kronologis penyelesaian insiden.
-5. **Autentikasi Aman AuthHub SSO**:
+6. **Autentikasi Aman AuthHub SSO**:
    Mode administrator diamankan menggunakan standar **AuthHub OAuth2 & FIDO2 YubiKey Hardware PIN**.
 
 ---
@@ -62,6 +64,12 @@ docker compose up -d --build
 | `/api/incidents` | `GET`, `POST` | Terbitkan laporan insiden baru (Admin) |
 | `/api/incidents/:id/update` | `POST` | Update status insiden / tandai *resolved* (Admin) |
 | `/api/settings` | `GET`, `POST` | Pengaturan sistem & integrasi webhook peringatan (Admin) |
+| `/api/packets` | `GET`, `DELETE` | Ambil stream paket / filter berdasarkan protokol, IP, port, atau bersihkan buffer |
+| `/api/packets/stream` | `GET (SSE)` | Real-time Server-Sent Events stream aliran paket 60fps |
+| `/api/packets/:id` | `GET` | Detail dekonstruksi layer & raw payload hexdump satu paket |
+| `/api/packets/start` | `POST` | Mulai penangkapan paket pada interface (`eth0`, `wlan0`, `docker0`, `any`) |
+| `/api/packets/stop` | `POST` | Jeda penangkapan paket |
+| `/api/packets/export/pcap` | `GET` | Unduh rekaman sesi sebagai berkas biner `.pcap` standar Wireshark |
 
 ---
 

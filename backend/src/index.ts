@@ -15,6 +15,7 @@ import {
   requireAdmin,
   exchangeOAuthCode,
 } from "./auth.js";
+import { packetSniffer } from "./packet_sniffer.js";
 
 const app = express();
 
@@ -81,6 +82,98 @@ app.get("/api/status", (_req: Request, res: Response) => {
 
 app.get("/api/sla-report", (_req: Request, res: Response) => {
   res.json(db.calculateSlaReport());
+});
+
+// ─── NetPulse Sentry — Deep Packet Inspector & Wireshark Engine ───
+
+// 1. Get Live Packet List & Filter
+app.get("/api/packets", (req: Request, res: Response) => {
+  const protocol = req.query.protocol as string | undefined;
+  const ip = req.query.ip as string | undefined;
+  const port = req.query.port ? parseInt(req.query.port as string, 10) : undefined;
+  const search = req.query.search as string | undefined;
+  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 100;
+
+  const packets = packetSniffer.getPackets({ protocol, ip, port, search, limit });
+  const stats = packetSniffer.getStats();
+
+  res.json({
+    stats,
+    packets,
+  });
+});
+
+// 2. Available Network Interfaces
+app.get("/api/packets/interfaces", (_req: Request, res: Response) => {
+  res.json({
+    interfaces: packetSniffer.getAvailableInterfaces(),
+  });
+});
+
+// 3. Network Throughput & Distribution Stats
+app.get("/api/packets/stats", (_req: Request, res: Response) => {
+  res.json(packetSniffer.getStats());
+});
+
+// 4. Real-time Server-Sent Events (SSE) Stream
+app.get("/api/packets/stream", (req: Request, res: Response) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  // Push initial stats
+  res.write(`data: ${JSON.stringify({ type: "stats", data: packetSniffer.getStats() })}\n\n`);
+
+  // Subscribe to live packets
+  const unsubscribe = packetSniffer.subscribe((packet) => {
+    res.write(`data: ${JSON.stringify({ type: "packet", data: packet })}\n\n`);
+  });
+
+  req.on("close", () => {
+    unsubscribe();
+  });
+});
+
+// 5. Get Single Packet Deep Layer Details
+app.get("/api/packets/:id", (req: Request, res: Response) => {
+  const idStr = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(idStr, 10);
+  const packet = packetSniffer.getPacketById(id);
+  if (!packet) {
+    return res.status(404).json({ error: "Packet not found" });
+  }
+  res.json(packet);
+});
+
+// 6. Start Capture
+app.post("/api/packets/start", (req: Request, res: Response) => {
+  const iface = req.body?.interface || "any";
+  packetSniffer.startCapture(iface);
+  res.json({ status: "started", interface: iface });
+});
+
+// 7. Stop Capture
+app.post("/api/packets/stop", (_req: Request, res: Response) => {
+  packetSniffer.stopCapture();
+  res.json({ status: "stopped" });
+});
+
+// 8. Clear Buffer
+app.delete("/api/packets", (_req: Request, res: Response) => {
+  packetSniffer.clearBuffer();
+  res.json({ status: "cleared" });
+});
+
+// 9. Download Session as Standard Wireshark .pcap
+app.get("/api/packets/export/pcap", (_req: Request, res: Response) => {
+  const pcapBuffer = packetSniffer.generatePcapBinary();
+  const filename = `netpulse-capture-${Date.now()}.pcap`;
+
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Content-Type", "application/vnd.tcpdump.pcap");
+  res.send(pcapBuffer);
 });
 
 app.get("/api/monitors/:id/history", (req: Request, res: Response) => {

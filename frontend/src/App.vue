@@ -43,6 +43,25 @@
         </div>
       </div>
 
+      <!-- Navigation Tabs (Uptime vs NetPulse Packet Sentry) -->
+      <div class="flex items-center p-1 bg-slate-900/90 rounded-xl border border-slate-800">
+        <button
+          @click="currentView = 'uptime'"
+          class="px-3 py-1 text-xs font-semibold rounded-lg transition-all"
+          :class="currentView === 'uptime' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'"
+        >
+          📊 Status Uptime
+        </button>
+        <button
+          @click="currentView = 'packets'"
+          class="px-3 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5"
+          :class="currentView === 'packets' ? 'bg-cyan-600 text-white shadow-md' : 'text-slate-400 hover:text-white'"
+        >
+          <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+          <span>🦈 NetPulse Sentry</span>
+        </button>
+      </div>
+
       <!-- Header Controls & Auth Profile -->
       <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0 flex-wrap">
         <!-- Subscribe CTA Button -->
@@ -147,6 +166,7 @@
 
     <!-- Main Workspace -->
     <main
+      v-if="currentView === 'uptime'"
       class="flex-1 w-full mx-auto px-3.5 py-5 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 transition-all"
       :class="isNocMode ? 'max-w-7xl text-sm' : 'max-w-5xl'"
     >
@@ -521,6 +541,9 @@
         </div>
       </div>
     </main>
+
+    <!-- ─── NetPulse Sentry View (DPI / Mini-Wireshark) ─── -->
+    <NetPulseSentry v-else-if="currentView === 'packets'" />
 
     <!-- ─── Admin Command Modal (AuthHub SSO Protected) ─── -->
     <div v-if="showAdminModal" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
@@ -1143,6 +1166,9 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
+import NetPulseSentry from "./components/NetPulseSentry.vue";
+
+const currentView = ref<"uptime" | "packets">("uptime");
 
 const API_BASE = "/api";
 
